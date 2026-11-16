@@ -16,6 +16,8 @@
     "build": "tsc --noEmit false --outDir dist --incremental false",
     "start": "node dist/src/main.js",
     "test:unit": "npm run build && node --test dist/tests/catalog.unit.test.js",
+    "test:recommendations:unit": "npm run build && node --test dist/tests/recommendations.unit.test.js",
+    "test:recommendations:integration": "npm run build && node --test dist/tests/recommendations.integration.test.js",
     "test:integration": "npm run build && node --test dist/tests/catalog.integration.test.js"
   },
   "devDependencies": {

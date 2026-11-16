@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { Module, type DynamicModule } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { APP_FILTER, NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
 import type { Config } from './config.js';
 import { HealthController } from './health.controller.js';
@@ -9,12 +9,15 @@ import { CatalogRepository, DATABASE_POOL } from './catalog/catalog.repository.j
 import { CatalogService } from './catalog/catalog.service.js';
 import { APP_CONFIG, DemoAuthGuard } from './catalog/demo-auth.guard.js';
 
+import { RecommendationExceptionFilter, RecommendationsController } from './recommendations/recommendations.controller.js';
+import { RecommendationsService } from './recommendations/recommendations.service.js';
+
 @Module({})
 export class AppModule {
   static register(config: Config): DynamicModule {
     return {
       module: AppModule,
-      controllers: [HealthController, CatalogController],
+      controllers: [HealthController, CatalogController, RecommendationsController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
         { provide: DATABASE_POOL, useFactory: () => {
@@ -24,7 +27,8 @@ export class AppModule {
           pool.on('error', () => { console.warn('Idle database connection failed; details redacted.'); });
           return pool;
         } },
-        CatalogRepository, CatalogService, DemoAuthGuard,
+        CatalogRepository, CatalogService, DemoAuthGuard, RecommendationsService,
+        { provide: APP_FILTER, useClass: RecommendationExceptionFilter },
       ],
     };
   }
@@ -32,6 +36,10 @@ export class AppModule {
 
 export async function createApplication(config: Config) {
   const app = await NestFactory.create(AppModule.register(config), { logger: ['warn', 'error'] });
+  app.use('/recommendations', (_request: unknown, response: { setHeader(name: string, value: string): void }, next: () => void) => {
+    response.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.enableShutdownHooks();
   return app;
 }
