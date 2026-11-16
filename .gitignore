@@ -1,0 +1,52 @@
+# Secrets and accidentally copied credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+.azure/
+.config/gcloud/
+.npmrc
+.netrc
+.terraformrc
+terraform.rc
+credentials.tfrc.json
+credentials
+
+# Dependencies, build output and local tooling
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+.npm/
+*.log
+*.tsbuildinfo
+
+# Root scratch directories and temporary files
+/tmp/
+/temp/
+*.tmp
+
+# Terraform state and private variables
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Editor and OS output
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
