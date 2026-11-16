@@ -14,7 +14,7 @@ Build P3 AI Program Advisor, an independent Wandari-aligned portfolio simulation
 
 ## Scope and authorization
 
-The approved target stack is NestJS/TypeScript, PostgreSQL/RDS, Rust ranking, OpenAI approved tool calls, EC2, Terraform and bounded LocalStack simulation compatible with the intended Base plan. Targets are not implemented capabilities. Only the D1.1 harness is implemented; business invariants are documented, not enforced by an application.
+The approved target stack is NestJS/TypeScript, PostgreSQL/RDS, Rust ranking, OpenAI approved tool calls, EC2, Terraform and bounded LocalStack simulation compatible with the intended Base plan. Targets are not implemented capabilities. D1.1 implements the harness; separately authorized D1.2 adds a local NestJS/PostgreSQL synthetic catalog with demo authentication and tenant-scoped reads. Eligibility, ranking, model tools, checkout, provider ingestion and cloud capabilities remain unimplemented. See docs/verification/D1.2.md for executed evidence and limitations; human review remains pending.
 
 Work only within the explicitly authorized increment. D1.1 permits these nine harness files, local Git initialization, minimal npm development dependencies and non-destructive verification. Stop for review after verification. D1.2 and publication require separate authorization. Do not stage, commit, tag, configure remotes, push, deploy, provision, call paid APIs, start services, migrate databases or run Terraform during D1.1. Never discard unexpected user changes or use destructive commands without explicit authorization.
 

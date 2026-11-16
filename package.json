@@ -2,7 +2,7 @@
   "name": "p3-ai-program-advisor",
   "version": "0.0.0",
   "private": true,
-  "description": "Independent portfolio simulation: D1.1 development harness only",
+  "description": "Independent portfolio simulation: local D1.2 catalog foundation",
   "type": "module",
   "engines": {
     "node": ">=24 <25",
@@ -12,10 +12,23 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "check:env": "node scripts/check-env.mjs",
-    "verify": "npm run typecheck && npm run check:env"
+    "verify": "npm run typecheck && npm run check:env",
+    "build": "tsc --noEmit false --outDir dist --incremental false",
+    "start": "node dist/src/main.js",
+    "test:unit": "npm run build && node --test dist/tests/catalog.unit.test.js",
+    "test:integration": "npm run build && node --test dist/tests/catalog.integration.test.js"
   },
   "devDependencies": {
     "@types/node": "24.10.0",
+    "@types/pg": "8.23.1",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.10",
+    "@nestjs/core": "11.2.10",
+    "@nestjs/platform-express": "11.2.10",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
   }
 }

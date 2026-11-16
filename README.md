@@ -4,25 +4,25 @@ An independently implemented, Wandari-aligned portfolio simulation of the origin
 
 ## Status and target
 
-Current implementation: **D1.1 development harness only**. No application endpoints, catalog, authentication, pricing, eligibility checks or recommendations exist.
+Current implementation: **D1.1 harness plus D1.2 local NestJS/PostgreSQL catalog foundation**, pending independent review. `GET /health` reports process health; authenticated `GET /catalog/offers` returns active synthetic offers scoped to server-authenticated demo tenants. PostgreSQL owns fixture prices and prerequisite metadata. Eligibility decisions, recommendations, ranking, model tools, provider ingestion and checkout remain unimplemented. See [D1.2 evidence and limitations](docs/verification/D1.2.md).
 
-The production-target architecture was designed during Day 0 according to the owner; its architecture artifacts are not present here. The assigned target is a NestJS/TypeScript API, PostgreSQL on RDS, deterministic Rust ranking, OpenAI approved tool calling, and EC2 hosting, with Terraform and bounded LocalStack simulation later. LocalStack must fit the intended long-term Base plan; feature compatibility is currently unknown.
+The production-target architecture was designed during Day 0 according to the owner and is documented in [the architecture overview](docs/architecture/overview.md). The assigned target is a NestJS/TypeScript API, PostgreSQL on RDS, deterministic Rust ranking, OpenAI approved tool calling, and EC2 hosting, with Terraform and bounded LocalStack simulation later. LocalStack must fit the intended long-term Base plan; feature compatibility is currently unknown.
 
 Status words have distinct meanings:
 
 | Term | Meaning and current evidence |
 | --- | --- |
 | Designed | Target decisions; not proof of executable behavior |
-| Implemented | Harness source exists; application is absent |
-| Tested | Only the commands and results in the verification record |
+| Implemented | Harness and local demo catalog API; production identity and other target components remain absent |
+| Tested | Only executed checks in the D1.1 and D1.2 verification records |
 | Emulated | No AWS services have been emulated |
 | Deployed | Nothing has been deployed |
 
-The seven business invariants and authorization rules are in [AGENTS.md](AGENTS.md). They govern later implementation and are not implemented business behavior today.
+The seven business invariants and authorization rules are in [AGENTS.md](AGENTS.md). D1.2 implements demo authentication, tenant-scoped catalog access and stored price authority; eligibility, recommendation, checkout and provider integration rules remain requirements for later increments.
 
 ## Development and verification
 
-Use Node.js 24.x, npm 11.x and Git. npm is the package manager. Exact TypeScript and Node typing versions are locked; there are no application dependencies.
+Use Node.js 24.x, npm 11.x and Git. npm is the package manager. Exact NestJS, PostgreSQL driver, TypeScript and typing versions are locked.
 
 Ordinary development workflow, with dependency installation authorized:
 
@@ -49,6 +49,30 @@ Missing future tools do not fail D1.1. The checker inspects the repository conta
 `.env.example` documents anticipated placeholder configuration. D1.1 does not consume it and requires no AWS or OpenAI credentials. Trusted tenant identity must later be established server-side.
 
 Initial D1.1 verification reported Docker unavailable. Subsequent acceptance review distinguished sandbox access denial from daemon state and observed server version 28.5.1 through an approved read-only query outside the sandbox. These are historical observations, not guarantees of current access. PostgreSQL runtime readiness remains unresolved. PostgreSQL's client, Rust/Cargo and LocalStack tooling were missing. These do not block harness verification. Database and container work require separate D1.2 authorization and runtime verification. See [observed D1.1 evidence](docs/verification/D1.1.md).
+
+## D1.2 local setup and verification
+
+D1.2 subsequently verified PostgreSQL 17.12 and real HTTP catalog reads; the preceding paragraph preserves the D1.1 observation. This is a local portfolio simulation with fictional inventory and prices, not provider catalog data or a deployed service. Demo credentials are not production identity management. Prerequisites are metadata, not an eligibility decision. The future provider adapter remains an architectural boundary.
+
+Review [config/d1.2.env.example](config/d1.2.env.example). In a private shell environment, supply `P3_DB_PASSWORD`, `DATABASE_URL`, `P3_DEMO_TOKEN_A` and `P3_DEMO_TOKEN_B`; never put real values in tracked files or command arguments. Use two distinct random URL-safe tokens of 32–256 characters. The database URL must identify local user/database `p3_d12`; the test additionally requires `127.0.0.1:55432`. Keep the database password consistent with the URL and retain it privately to reuse the volume. Do not use `docker compose config` to print resolved secrets.
+
+Check for existing P3 container/volume and port conflicts before startup. Only operate against a verified local Docker context. The Compose file pins the observed PostgreSQL image digest, binds `127.0.0.1:55432`, and uses container `p3-d12-postgres` and persistent volume `p3-d12-data`. Do not adopt or overwrite unknown data. With local operations authorized:
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+docker compose up -d --wait --wait-timeout 60
+npm run test:unit
+D1_2_INTEGRATION=1 npm run test:integration
+npm run verify
+npm run build
+npm start
+```
+
+The integration command initializes only the dedicated catalog using `db/schema.sql` and `db/seed.sql`. It rejects unexpected offer IDs, checks fixed fixture ownership/prices/activity, tests repeatable seeding and temporarily deactivates/restores Academy B fixtures to verify a real empty catalog. Run it serially on this disposable local fixture database, never alongside an active demo. It starts and closes temporary localhost HTTP applications, including a connection-failure test against an unused local port; it does not stop PostgreSQL. It fails rather than substituting mocks when real PostgreSQL is unavailable.
+
+`npm start` binds the demo API to `127.0.0.1`, using `PORT` (default 3000). `/health` is public process health and does not establish database readiness. Send `Authorization: Bearer <private demo credential>` to `/catalog/offers`; tenant query/header values cannot change scope. Successful responses are arrays of database fields (`offer_id`, `title`, `price_cents`, `currency`, `required_skills`, `weekly_study_hours`), ordered by offer ID. Empty scope is HTTP 200 with `[]`; invalid authentication is 401; database request failure is a sanitized 503. Catalog responses carry `Cache-Control: no-store`. No further endpoints are implemented.
+
+Ctrl-C stops the foreground API. `docker compose stop postgres` stops only this project's database without deleting its persistent volume; do not remove volumes as routine cleanup. Host-context permission may be required where the sandbox blocks Docker or localhost networking. The executed session's private generated configuration location and retained runtime state are documented in the D1.2 record without exposing values.
 
 ## Review and future publication
 

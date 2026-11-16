@@ -1,0 +1,22 @@
+name: p3-d12
+services:
+  postgres:
+    image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
+    container_name: p3-d12-postgres
+    environment:
+      POSTGRES_USER: p3_d12
+      POSTGRES_DB: p3_d12
+      POSTGRES_PASSWORD: ${P3_DB_PASSWORD:?Set a private local database password}
+    ports:
+      - '127.0.0.1:55432:5432'
+    volumes:
+      - catalog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U p3_d12 -d p3_d12']
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    restart: 'no'
+volumes:
+  catalog-data:
+    name: p3-d12-data

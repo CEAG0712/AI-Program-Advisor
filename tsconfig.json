@@ -7,7 +7,8 @@
     "checkJs": true,
     "strict": true,
     "noEmit": true,
+    "experimentalDecorators": true,
     "types": ["node"]
   },
-  "include": ["scripts/check-env.mjs"]
+  "include": ["scripts/check-env.mjs", "src/**/*.ts", "tests/**/*.ts"]
 }
