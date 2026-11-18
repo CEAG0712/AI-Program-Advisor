@@ -15,11 +15,14 @@ import { ADVISOR, AdvisorController, AdvisorExceptionFilter, isAdvisorPath } fro
 import { AdvisorService } from './ai/advisor.service.js';
 import { RecommendationsExecutor } from './ai/advisor.executor.js';
 import type { ModelClient, InitialModelReply, FinalModelReply } from './ai/model.client.js';
+import { OpenAIModelClient, type OpenAIModelOptions } from './ai/openai.model.client.js';
 import { TOOL_NAME } from './ai/tool.contract.js';
 import { REASON_IDS } from './ai/response.policy.js';
 
 // Server-side DI token only; never selected by a request or model output.
 export const FAKE_ADVISOR_MODEL = Symbol('fake-advisor-model');
+const EXPERIMENTAL_ADVISOR_DEADLINES = Object.freeze({ initialMs: 15000, businessMs: 2500, finalMs: 8000, overallMs: 30000 });
+
 function fakeModelClient(): ModelClient {
   return { request: async (input, signal) => {
     signal.throwIfAborted();
@@ -37,29 +40,42 @@ function fakeModelClient(): ModelClient {
 export interface ApplicationOverrides {
   readonly advisor?: AdvisorService;
   readonly databasePool?: Pool;
-  readonly advisorMode?: 'fake-model-postgres';
+  readonly advisorMode?: 'fake-model-postgres' | 'openai-model-postgres';
+  readonly advisorLatency?: 'b3c2f-experimental';
+  readonly openai?: OpenAIModelOptions;
 }
 
 @Module({})
 export class AppModule {
   static register(config: Config, overrides: ApplicationOverrides = {}): DynamicModule {
-    if (overrides.advisorMode !== undefined && overrides.advisorMode !== 'fake-model-postgres') {
+    const { advisorMode, advisorLatency, openai } = overrides;
+    if (advisorMode !== undefined && advisorMode !== 'fake-model-postgres' && advisorMode !== 'openai-model-postgres') {
       throw new Error('Unsupported advisor composition mode.');
     }
-    if (overrides.advisorMode !== undefined && overrides.advisor !== undefined) {
+    if (advisorMode !== undefined && overrides.advisor !== undefined) {
       throw new Error('Advisor mode and explicit advisor override cannot be combined.');
     }
-    const enabled = overrides.advisorMode === 'fake-model-postgres';
+    if ((advisorMode === 'openai-model-postgres') !== (openai !== undefined)) {
+      throw new Error('OpenAI configuration requires explicit OpenAI advisor mode, and vice versa.');
+    }
+    if (advisorLatency !== undefined &&
+        (advisorLatency !== 'b3c2f-experimental' || advisorMode !== 'openai-model-postgres')) {
+      throw new Error('Unsupported advisor latency selection for this composition mode.');
+    }
+    const deadlines = advisorLatency === 'b3c2f-experimental' ? EXPERIMENTAL_ADVISOR_DEADLINES : undefined;
+    const modelProvider = openai !== undefined
+      ? { provide: OpenAIModelClient, useValue: new OpenAIModelClient(openai) }
+      : advisorMode === 'fake-model-postgres' ? { provide: FAKE_ADVISOR_MODEL, useFactory: fakeModelClient } : undefined;
     return {
       module: AppModule,
       controllers: [HealthController, CatalogController, RecommendationsController, AdvisorController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
-        ...(enabled ? [
+        ...(modelProvider ? [
           RecommendationsExecutor,
-          { provide: FAKE_ADVISOR_MODEL, useFactory: fakeModelClient },
-          { provide: ADVISOR, inject: [FAKE_ADVISOR_MODEL, RecommendationsExecutor],
-            useFactory: (model: ModelClient, executor: RecommendationsExecutor) => new AdvisorService(model, executor) },
+          modelProvider,
+          { provide: ADVISOR, inject: [modelProvider.provide, RecommendationsExecutor],
+            useFactory: (model: ModelClient, executor: RecommendationsExecutor) => new AdvisorService(model, executor, undefined, deadlines) },
         ] : [{ provide: ADVISOR, useValue: overrides.advisor ?? null }]),
         { provide: DATABASE_POOL, useFactory: () => {
           if (overrides.databasePool) return overrides.databasePool;

@@ -8,6 +8,13 @@ import type { ModelClient, ModelRequest } from './model.client.js';
 export const ADVISOR_LIMITS = Object.freeze({ initialBytes: 8192, finalRequestBytes: 32768,
   finalReplyBytes: 8192, factsBytes: 32768, offers: 10,
   initialMs: 2000, businessMs: 2500, finalMs: 1000, overallMs: 6000 });
+interface AdvisorDeadlines {
+  readonly initialMs: number;
+  readonly businessMs: number;
+  readonly finalMs: number;
+  readonly overallMs: number;
+}
+
 export interface BusinessExecutor {
   /** Must supply authorized facts. Shape/suitability checks do not prove ownership.
    * A future RecommendationsService adapter must retain server-authenticated scope. */
@@ -120,8 +127,12 @@ function factsFrom(value: unknown, confirmed: RecommendationRequest): Recommenda
 }
 
 export class AdvisorService {
+  readonly #deadlines: AdvisorDeadlines;
+
   constructor(private readonly model: ModelClient, private readonly business: BusinessExecutor,
-    private readonly clock: AdvisorRuntime = runtime) {}
+    private readonly clock: AdvisorRuntime = runtime, deadlines: AdvisorDeadlines = ADVISOR_LIMITS) {
+    this.#deadlines = Object.freeze({ ...deadlines });
+  }
 
   private phase<T>(operation: (signal: AbortSignal) => Promise<T>, milliseconds: number,
     overallEnd: number, caller?: AbortSignal): Promise<T> {
@@ -163,7 +174,7 @@ export class AdvisorService {
     let stage: 'input' | 'initial' | 'business' | 'facts' | 'final' = 'input';
     let facts: RecommendationResponse | undefined;
     try {
-      const overallEnd = this.clock.now() + ADVISOR_LIMITS.overallMs;
+      const overallEnd = this.clock.now() + this.#deadlines.overallMs;
       if (input.signal?.aborted) return outcome({ status: 'cancelled', code: 'CANCELLED' });
       const tenant = data(input.tenant, 256);
       if (!exact(tenant, ['tenantId']) || !['academy-a', 'academy-b'].includes(tenant.tenantId as string)) {
@@ -179,7 +190,7 @@ export class AdvisorService {
       };
       stage = 'initial';
       let reply: unknown;
-      const raw = await request({ phase: 'initial', constraints: confirmed }, ADVISOR_LIMITS.initialBytes, ADVISOR_LIMITS.initialMs);
+      const raw = await request({ phase: 'initial', constraints: confirmed }, ADVISOR_LIMITS.initialBytes, this.#deadlines.initialMs);
       try { reply = parse(raw, ADVISOR_LIMITS.initialBytes); }
       catch { return outcome({ status: 'rejected', code: 'MODEL_PROTOCOL' }); }
       if (exact(reply, ['kind']) && reply.kind === 'refusal') return outcome({ status: 'refused', code: 'MODEL_REFUSAL' });
@@ -197,12 +208,12 @@ export class AdvisorService {
       stage = 'business';
       // Acyclic flow: exactly one dispatch site; no retries or re-entry from model output.
       const result = await this.phase((signal) => this.business.execute(trustedTenant, accepted.arguments, signal),
-        ADVISOR_LIMITS.businessMs, overallEnd, input.signal);
+        this.#deadlines.businessMs, overallEnd, input.signal);
       stage = 'facts';
       facts = factsFrom(result, confirmed);
       stage = 'final';
       const finalRaw = await request({ phase: 'final', facts: facts as unknown as GroundedResponse },
-        ADVISOR_LIMITS.finalRequestBytes, ADVISOR_LIMITS.finalMs);
+        ADVISOR_LIMITS.finalRequestBytes, this.#deadlines.finalMs);
       let plan: unknown;
       try {
         const final = parse(finalRaw, ADVISOR_LIMITS.finalReplyBytes);

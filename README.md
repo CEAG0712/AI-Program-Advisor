@@ -1,28 +1,40 @@
 # P3 AI Program Advisor
 
-An independently implemented, Wandari-aligned portfolio simulation of the original **Intelligent Agent for E-commerce** assignment. This is not a claim of customer deployment or verified production work.
+An independent, synthetic **AI Backend Engineering / Forward Deployed Engineering** portfolio simulation, aligned with the original Wandari **Intelligent Agent for E-commerce** assignment. The evidence covers a fictional academy catalog and controlled engineering tests.
 
 ## Status and target
 
-Current implementation: **D1.1 harness, D1.2 local NestJS/PostgreSQL catalog and D1.3 deterministic recommendations**, pending independent review. `GET /health` reports process health; authenticated `GET /catalog/offers` returns active synthetic offers scoped to server-authenticated demo tenants. PostgreSQL owns fixture prices and prerequisite metadata. Authenticated `POST /recommendations` validates learner input, filters tenant-authorized active offers by USD budget, weekly hours and exact declared prerequisite skills, then ranks deterministically. This establishes suitability under a synthetic declared-skill policy only. Verified admission eligibility, Rust, live model integration, provider ingestion and checkout remain unimplemented. See [D1.3 evidence and limitations](docs/verification/D1.3.md) and the preserved [D1.2 record](docs/verification/D1.2.md).
+The NestJS/TypeScript application uses a synthetic PostgreSQL course catalog. Demo bearer authentication establishes tenant identity on the server. `GET /health` reports process health, and authenticated `GET /catalog/offers` returns active offers for that tenant. Authenticated `POST /recommendations` filters by budget, available study time and exact declared prerequisites, then ranks eligible offers deterministically. PostgreSQL supplies fixture prices and prerequisites. See the [D1.2 catalog record](docs/verification/D1.2.md) and [D1.3 recommendation evidence](docs/verification/D1.3.md).
 
-The production-target architecture was designed during Day 0 according to the owner and is documented in [the architecture overview](docs/architecture/overview.md). The assigned target is a NestJS/TypeScript API, PostgreSQL on RDS, deterministic Rust ranking, OpenAI approved tool calling, and EC2 hosting, with Terraform and bounded LocalStack simulation later. LocalStack must fit the intended long-term Base plan; feature compatibility is currently unknown.
-
-Status words have distinct meanings:
-
-| Term | Meaning and current evidence |
-| --- | --- |
-| Designed | Target decisions; not proof of executable behavior |
-| Implemented | Harness, local demo catalog, recommendation API, and advisor composition for local acceptance |
-| Tested | Executed Day 1 checks in the verification records and reported B3 advisor acceptance |
-| Emulated | No AWS services have been emulated |
-| Deployed | Nothing has been deployed |
-
-The seven business invariants and authorization rules are in [AGENTS.md](AGENTS.md). D1.2 implements demo authentication, tenant-scoped catalog access and stored price authority; D1.3 implements bounded declared-skill suitability and recommendations; admission verification, checkout and provider integration remain future requirements.
+The policy establishes synthetic course suitability using self-declared skills. Verified admission, production identity, database Row-Level Security (RLS), provider catalog ingestion, checkout, Rust ranking, deployment and operational reliability work remain future scope. The Day 0 architecture targets Amazon Web Services (AWS), including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), with Terraform and bounded LocalStack experiments. LocalStack Base compatibility remains unverified. [Architecture overview](docs/architecture/overview.md) · [Business invariants](AGENTS.md)
 
 ### Advisor implementation and evidence
 
-The server-selected `fake-model-postgres` acceptance mode connects the authenticated advisor route and a local fake model to real PostgreSQL catalog reads. The normal application entrypoint leaves the advisor disabled. B3B-2B reported two passing tests, including in-process HTTP acceptance against local PostgreSQL. The acceptance checked both synthetic tenant scopes, grounded recommendations, and preservation of all six fixture rows. The Day 0 architecture describes the production target.
+The advisor validates `find_suitable_courses` proposals against confirmed constraints before dispatching a single tenant-scoped lookup. Bounded two-phase orchestration supports a local fake model and a real OpenAI Responses API adapter. The server renders recommendations from authorized database facts and can use deterministic fallback when a final model explanation fails validation or is unavailable after a successful read.
+
+Ordinary application startup leaves the advisor disabled. The OpenAI adapter and the explicit experimental latency profile are selected through server-owned composition. HTTP parameters confer no control over either setting. [Application composition](src/app.module.ts) · [Normal entrypoint](src/main.ts)
+
+With advisor composition enabled, send a demo bearer credential and `Content-Type: application/json` to `POST /advisor/recommendations`. The route accepts exactly `confirmed: true` and a `constraints` object with all three fields below. Natural-language intake was deferred for this increment.
+
+```json
+{
+  "confirmed": true,
+  "constraints": {
+    "budget_cents": 30000,
+    "weekly_hours": 6,
+    "known_skills": ["basic-python"]
+  }
+}
+```
+
+| Verification | Observed result |
+| --- | --- |
+| Gate 2 offline unit and mocked integration tests | **238 passed, zero failed, zero skipped.** |
+| B3B-2B real PostgreSQL with a fake model | In-process HTTP verified both tenant scopes and preserved all six fixture rows. |
+| B3C-2B initial OpenAI attempt | The 2-second initial deadline expired, returning HTTP 504 with zero business SQL dispatches. |
+| B3C-2G experimental OpenAI and PostgreSQL acceptance | One synthetic request completed with grounded recommendations under the explicit 30-second overall profile. The default overall deadline remains 6 seconds. |
+
+The controlled live success establishes neither an operational latency service-level objective (SLO) nor a production deployment.
 
 - [HTTP-to-PostgreSQL sequence](docs/architecture/b3b-http-postgresql-sequence.md)
 - [Tenant trust boundaries](docs/architecture/b3b-tenant-trust-boundaries.md)
@@ -54,15 +66,15 @@ The checker also forces `NODE_DISABLE_COMPILE_CACHE=1` for child processes, incl
 
 Missing future tools do not fail D1.1. The checker inspects the repository containing this script; it does not require a commit or clean working tree. Failed Docker queries report sanitized `ACCESS_DENIED`, `CONNECTION_UNAVAILABLE`, `TIMEOUT` or `UNKNOWN_FAILURE` categories without inferring whether the daemon is stopped. Successful queries report `AVAILABLE`.
 
-`.env.example` documents anticipated placeholder configuration. D1.1 does not consume it and requires no AWS or OpenAI credentials. Trusted tenant identity must later be established server-side.
+`.env.example` documents placeholder configuration. The D1.1 harness requires no AWS or OpenAI credentials. The local catalog and advisor use server-derived demo tenant identity.
 
-Initial D1.1 verification reported Docker unavailable. Subsequent acceptance review distinguished sandbox access denial from daemon state and observed server version 28.5.1 through an approved read-only query outside the sandbox. These are historical observations, not guarantees of current access. PostgreSQL runtime readiness remains unresolved. PostgreSQL's client, Rust/Cargo and LocalStack tooling were missing. These do not block harness verification. Database and container work require separate D1.2 authorization and runtime verification. See [observed D1.1 evidence](docs/verification/D1.1.md).
+Initial D1.1 verification reported Docker unavailable. Subsequent acceptance review distinguished sandbox access denial from daemon state and observed server version 28.5.1 through an approved read-only query. PostgreSQL readiness and tool availability were unresolved at that checkpoint. See the [D1.1 evidence](docs/verification/D1.1.md) for historical observations and the D1.2 section below for later database verification.
 
 ## D1.2 local setup and verification
 
 D1.2 subsequently verified PostgreSQL 17.12 and real HTTP catalog reads; the preceding paragraph preserves the D1.1 observation. This is a local portfolio simulation with fictional inventory and prices, not provider catalog data or a deployed service. Demo credentials are not production identity management. Prerequisites are metadata, not an eligibility decision. The future provider adapter remains an architectural boundary.
 
-Review [config/d1.2.env.example](config/d1.2.env.example). In a private shell environment, supply `P3_DB_PASSWORD`, `DATABASE_URL`, `P3_DEMO_TOKEN_A` and `P3_DEMO_TOKEN_B`; never put real values in tracked files or command arguments. Use two distinct random URL-safe tokens of 32–256 characters. The database URL must identify local user/database `p3_d12`; the test additionally requires `127.0.0.1:55432`. Keep the database password consistent with the URL and retain it privately to reuse the volume. Do not use `docker compose config` to print resolved secrets.
+The [D1.2 configuration template](config/d1.2.env.example) documents the required variables and contains placeholders. The demo expects two distinct URL-safe bearer credentials of 32–256 characters. The test requires the dedicated `p3_d12` database and role at `127.0.0.1:55432`.
 
 Check for existing P3 container/volume and port conflicts before startup. Only operate against a verified local Docker context. The Compose file pins the observed PostgreSQL image digest, binds `127.0.0.1:55432`, and uses container `p3-d12-postgres` and persistent volume `p3-d12-data`. Do not adopt or overwrite unknown data. With local operations authorized:
 
@@ -80,11 +92,11 @@ The integration command initializes only the dedicated catalog using `db/schema.
 
 `npm start` binds the demo API to `127.0.0.1`, using `PORT` (default 3000). `/health` is public process health and does not establish database readiness. Send `Authorization: Bearer <private demo credential>` to `/catalog/offers`; tenant query/header values cannot change scope. Successful responses are arrays of database fields (`offer_id`, `title`, `price_cents`, `currency`, `required_skills`, `weekly_study_hours`), ordered by offer ID. Empty scope is HTTP 200 with `[]`; invalid authentication is 401; database request failure is a sanitized 503. Catalog responses carry `Cache-Control: no-store`. `POST /recommendations` is described below.
 
-Ctrl-C stops the foreground API. `docker compose stop postgres` stops only this project's database without deleting its persistent volume; do not remove volumes as routine cleanup. Host-context permission may be required where the sandbox blocks Docker or localhost networking. The executed session's private generated configuration location and retained runtime state are documented in the D1.2 record without exposing values.
+Ctrl-C stops the foreground API. `docker compose stop postgres` stops this project's database and retains its persistent volume. Host-context permission may be required where the sandbox blocks Docker or localhost networking.
 
 ## Review and future publication
 
-Future GitHub publication is mandatory for portfolio completion but is not authorized by D1.1. After separate authorization: review the full file set, audit secrets, stage approved files, create a meaningful commit, configure the approved repository remote, push without force, independently verify the remote SHA/file set and record evidence. No repository URL is assumed.
+The Day 2 publication candidate requires independent review and separate publication authorization. Review the full file set and secret audit before staging approved files. After publication, independently verify the remote commit and file set and record the evidence.
 
 For session recovery, follow AGENTS.md, inspect Git and the verification record, and obtain the next increment's authorization. Day 1 has a 240-minute ceiling; the original 45-minute harness allocation includes D1.0. Total implementation is limited to 20 hours with a provisional $15 spending ceiling. Record measured work, not inferred time.
 
@@ -117,4 +129,4 @@ D1_3_INTEGRATION=1 npm run test:recommendations:integration
 npm run build
 ```
 
-Run integration suites serially against the already verified dedicated database at `127.0.0.1:55432`, with no active demo. D1.2 tests initialize/check fixtures and temporarily change activity; D1.3 tests are read-only and refuse any deviation from all six expected fixture rows. Both close their owned applications/pools. Do not create/recreate containers or reset fixtures to make verification pass. The current increment authorizes local verification only; staging, commits, pushes and D1.4 require separate authorization.
+Run integration suites only with local verification authorized, serially against the dedicated database at `127.0.0.1:55432` with no active demo. D1.2 tests initialize and check fixtures and temporarily change activity. D1.3 tests are read-only and refuse any deviation from all six expected fixture rows. Both close their owned applications and pools. Preserve the database and fixtures when diagnosing verification failures.

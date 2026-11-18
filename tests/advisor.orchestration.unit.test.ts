@@ -39,7 +39,8 @@ class Clock implements AdvisorRuntime {
   }
 }
 type Step = string | ((signal: AbortSignal, input: ModelRequest) => Promise<string>);
-function fixture(steps: Step[] = [initial(), final()], execute?: BusinessExecutor['execute']) {
+function fixture(steps: Step[] = [initial(), final()], execute?: BusinessExecutor['execute'],
+  deadlines?: ConstructorParameters<typeof AdvisorService>[3]) {
   const clock = new Clock();
   const calls: { input: ModelRequest; signal: AbortSignal }[] = [];
   const businessCalls: { tenant: unknown; args: unknown; signal: AbortSignal }[] = [];
@@ -54,7 +55,7 @@ function fixture(steps: Step[] = [initial(), final()], execute?: BusinessExecuto
     businessCalls.push({ tenant: scope, args, signal });
     return execute ? execute(scope, args, signal) : Promise.resolve(facts);
   } };
-  const service = new AdvisorService(model, business, clock);
+  const service = new AdvisorService(model, business, clock, deadlines);
   return { clock, calls, businessCalls, facts, service,
     run: (confirmed: unknown = maria, signal?: AbortSignal) => service.advise({ tenant, confirmed, signal }) };
 }
@@ -84,6 +85,7 @@ for (const [label, raw, code] of [
   ['mismatch', initial([proposal({ ...maria, budget_cents: 29999 })]), 'CONSTRAINT_MISMATCH'],
   ['unknown tool', initial([{ ...proposal(), name: 'checkout' }]), 'UNSUPPORTED_TOOL'],
   ['tenant argument', initial([proposal({ ...maria, tenant_id: 'academy-b' })]), 'INVALID_TOOL_ARGUMENTS'],
+  ['deadline argument', initial([proposal({ ...maria, initialMs: 15000 })]), 'INVALID_TOOL_ARGUMENTS'],
   ['tenant envelope', JSON.stringify({ kind: 'tool_proposals', proposals: [proposal()], tenant_id: 'academy-b' }), 'MODEL_PROTOCOL'],
   ['multiple proposals', initial([proposal(), proposal()]), 'MODEL_PROTOCOL'],
   ['empty proposals', initial([]), 'MODEL_PROTOCOL'],
@@ -215,6 +217,65 @@ test('rejection at deadline is classified as timeout even before timer delivery'
   assert.deepEqual(await f.run(), { status: 'unavailable', code: 'TIMEOUT' });
   assert.equal(f.businessCalls.length, 0);
 });
+
+const experimentalDeadlines = { initialMs: 15000, businessMs: 2500, finalMs: 8000, overallMs: 30000 };
+
+test('explicit deadlines are snapshotted and an initial result at the experimental deadline cannot dispatch', async () => {
+  const limits = { ...experimentalDeadlines };
+  const f = fixture([async () => { f.clock.time = 15000; return initial(); }], undefined, limits);
+  limits.initialMs = 16000;
+  assert.deepEqual(await f.run(), { status: 'unavailable', code: 'TIMEOUT' });
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].signal.aborted, true);
+  assert.equal(f.businessCalls.length, 0);
+  assert.equal(f.clock.tasks.size, 0);
+});
+
+test('the experimental overall deadline clips the final window and preserves grounded fallback', async () => {
+  const late = deferred<string>();
+  const f = fixture([async () => { f.clock.time = 14999; return initial(); }, () => late.promise], async () => {
+    assert.equal([...f.clock.tasks.values()][0].end, 17499);
+    f.clock.time = 17498;
+    return new Proxy(makeFacts(), { ownKeys(target) {
+      f.clock.time = 29900;
+      return Reflect.ownKeys(target);
+    } });
+  }, experimentalDeadlines);
+  const pending = f.run();
+  await flush();
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.businessCalls.map((call) => call.tenant), [tenant]);
+  assert.equal([...f.clock.tasks.values()][0].end, 30000);
+  f.clock.advance(99);
+  assert.equal(f.calls[1].signal.aborted, false);
+  f.clock.advance(1);
+  const result = await pending;
+  assert.equal(result.status, 'completed');
+  if (result.status !== 'completed') assert.fail();
+  assert.equal(result.response.source, 'deterministic_fallback');
+  assert.deepEqual(result.response.recommendations, makeFacts().recommendations);
+  assert.equal(f.calls[1].signal.aborted, true);
+  late.reject(new Error('late synthetic final rejection'));
+  await flush();
+  assert.equal(f.clock.tasks.size, 0);
+});
+
+test('caller cancellation still aborts the experimental initial phase before business dispatch', async () => {
+  const late = deferred<string>();
+  const f = fixture([() => late.promise], undefined, experimentalDeadlines);
+  const caller = new AbortController();
+  const pending = f.run(maria, caller.signal);
+  f.clock.advance(7000);
+  assert.equal(f.calls[0].signal.aborted, false);
+  caller.abort();
+  assert.deepEqual(await pending, { status: 'cancelled', code: 'CANCELLED' });
+  assert.equal(f.calls[0].signal.aborted, true);
+  late.resolve(initial());
+  await flush();
+  assert.equal(f.businessCalls.length, 0);
+  assert.equal(f.clock.tasks.size, 0);
+});
+
 test('cancel during final phase returns cancelled rather than fallback', async () => {
   const d = deferred<string>(); const f = fixture([initial(), () => d.promise]); const c = new AbortController();
   const pending = f.run(maria, c.signal); await flush(); c.abort();

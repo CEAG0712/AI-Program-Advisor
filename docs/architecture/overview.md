@@ -1,18 +1,18 @@
 # P3 AI Program Advisor
 
-Architecture documentation for an independent Wandari-aligned portfolio simulation of the original **Intelligent Agent for E-commerce** assignment. This is not evidence of Wandari employment, customer engagement, production operation or commercial outcomes.
+Architecture documentation for an independent, synthetic portfolio simulation aligned with the original Wandari **Intelligent Agent for E-commerce** assignment. The evidence covers local implementation and controlled acceptance.
 
 ## Evidence and provenance
 
-- **CONFIRMED — REPOSITORY:** [Operating contract](../../AGENTS.md), [current implementation](../../README.md), [harness manifest](../../package.json), [configuration template](../../.env.example) and [D1.1 verification](../verification/D1.1.md) were inspected at baseline `25b56fff79d865a79911d1daabb29a19e04283c1`.
-- **CONFIRMED — OWNER DAY 0 RECAP:** The owner-supplied P3-D1.1A implementation authorization supplies the Maria scenario, catalog assumptions, component responsibilities, infrastructure target and planning constraints. Original Day 0 Missions 1–5 were conversational exercises; their original artifacts are unavailable here. This increment formalizes recoverable decisions, not reconstructed dialogue.
-- **PROPOSED:** New implementation analysis is explicitly labeled. **UNRESOLVED:** No final decision is supported. Neither label establishes accepted historical behavior.
+- **CONFIRMED — REPOSITORY:** The original [harness verification](../verification/D1.1.md) covers baseline `25b56fff79d865a79911d1daabb29a19e04283c1`. The [README](../../README.md) and [B3 evidence record](b3-gate-implementation-status.md) describe the subsequent local catalog, recommendations and advisor.
+- **CONFIRMED — OWNER DAY 0 RECAP:** The P3-D1.1A authorization records the Maria scenario, catalog assumptions, component responsibilities, infrastructure target and planning constraints. The original Day 0 mission artifacts are unavailable, leaving **INSUFFICIENT EVIDENCE** to reconstruct the dialogue.
+- **PROPOSED** and **UNRESOLVED** identify design ideas and open decisions in the historical architecture documents.
 
 ## Business context and goals
 
-Maria is a fictional student seeking AI/backend learning offers with approximately $300, basic Python knowledge and six study hours per week. The planned synthetic catalog contains roughly 12–20 course offers across two fictional academy tenants. No real academy inventory or prices are asserted.
+Maria is a fictional student seeking AI/backend learning offers with approximately $300, basic Python knowledge and six study hours per week. The local acceptance fixture contains six synthetic offers across two fictional academy tenants. The Day 0 plan envisioned roughly 12–20 offers.
 
-The qualitative goal is to recommend suitable, authorized catalog offers with understandable explanations, preserve prerequisite uncertainty and accept that no suitable offer may exist. PostgreSQL will supply authoritative simulated prices; the model cannot invent them. No business KPI, latency SLO or customer outcome is established.
+The goal is to recommend suitable, authorized catalog offers with understandable explanations and support a valid no-match result. PostgreSQL supplies simulated prices, and backend policy checks exact declared prerequisites. The evidence establishes no customer outcome or latency service-level objective (SLO).
 
 ## Business invariants
 
@@ -26,25 +26,21 @@ The primary wording is from [AGENTS.md](../../AGENTS.md):
 6. No suitable offer is a valid and safe response.
 7. Preserve an explicit future catalog integration boundary.
 
-Caller-provided tenant values likewise confer no authority. Recommendation is advisory guidance; eligibility is a backend policy decision; catalog authority supplies facts. A future mock checkout handoff is a separate action requiring fresh server-side revalidation of price, eligibility and availability, followed by explicit user confirmation. Checkout is not implemented.
+Caller-provided tenant values likewise confer no authority. Backend policy decides synthetic suitability, and the catalog supplies facts. A future mock checkout handoff would require fresh server-side revalidation of price, eligibility and availability, followed by explicit user confirmation.
 
 ## Scope and current status
 
-The target includes NestJS/TypeScript, PostgreSQL, Rust ranking, bounded OpenAI tool use, AWS EC2/RDS infrastructure, Terraform and bounded LocalStack experimentation. Real payments, automatic purchasing, customer deployment claims and invented inventory are outside this simulation's scope.
+The NestJS/TypeScript advisor authenticates a structured request and passes server-derived tenant context to the advisor service. The service accepts a single bounded model proposal, validates it against the confirmed constraints, and executes the tenant-scoped PostgreSQL recommendation lookup. The server uses the authorized facts to render either a validated explanation plan or deterministic fallback. A failed catalog read produces a sanitized error. The OpenAI adapter uses explicit server-side composition, and ordinary startup leaves the advisor disabled. [HTTP controller](../../src/ai/advisor.controller.ts) · [Advisor service](../../src/ai/advisor.service.ts) · [OpenAI adapter](../../src/ai/openai.model.client.ts)
 
 | Status | Meaning and evidence |
 | --- | --- |
-| Designed | Target directions from repository and owner recap; not proof of execution |
-| Implemented | D1.1 nine-file engineering harness; D1.1A adds documentation only |
-| Tested | Historical harness checks recorded in D1.1 evidence; application controls are untested |
-| Emulated | No P3 AWS services emulated |
-| Deployed | No P3 application or infrastructure deployed; publishing harness source is distinct |
-
-The manifest has development dependencies only. TypeScript checks the environment inspection script. There are no application endpoints, authentication, catalog database, eligibility enforcement, ranker or model calls. Historical environment observations do not establish current PostgreSQL readiness.
+| **Implemented and tested** | Local synthetic catalog, demo bearer authentication, deterministic recommendations, bounded advisor orchestration and the OpenAI Responses API adapter. Verification includes offline mocks, real local PostgreSQL with a fake model and one successful controlled OpenAI and PostgreSQL acceptance. |
+| **Designed or targeted** | Rust ranking, future provider catalog integration, Amazon Web Services (AWS) infrastructure including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), Terraform and bounded LocalStack experimentation. |
+| **Not verified** | Production deployment, production authentication and authorization, database-enforced tenant isolation, verified admission eligibility and operational SLOs. No AWS services were emulated and no application or infrastructure was deployed. |
 
 ## Reading guide
 
-- [System design](system-design.md): components, trust boundaries and target diagram.
-- [Decisions](decisions.md): nine ADRs and their unresolved details.
-- [Security](security.md): required controls, safe failures and untested recovery directions.
-- [Roadmap](roadmap.md): milestone evidence, time ceilings and authorization gates.
+- [B3 implementation and verification status](b3-gate-implementation-status.md) records the current advisor evidence and limitations.
+- [B3B HTTP-to-PostgreSQL sequence](b3b-http-postgresql-sequence.md) and [tenant trust boundaries](b3b-tenant-trust-boundaries.md) describe the earlier fake-model acceptance path.
+- [System design](system-design.md), [architecture decision records](decisions.md) and [security design](security.md) document the Day 0 target and the D1.1A checkpoint.
+- [Roadmap](roadmap.md) preserves D1.1A planning, time ceilings and historical authorization wording.
