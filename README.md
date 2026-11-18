@@ -4,7 +4,7 @@ An independently implemented, Wandari-aligned portfolio simulation of the origin
 
 ## Status and target
 
-Current implementation: **D1.1 harness, D1.2 local NestJS/PostgreSQL catalog and D1.3 deterministic recommendations**, pending independent review. `GET /health` reports process health; authenticated `GET /catalog/offers` returns active synthetic offers scoped to server-authenticated demo tenants. PostgreSQL owns fixture prices and prerequisite metadata. Authenticated `POST /recommendations` validates learner input, filters tenant-authorized active offers by USD budget, weekly hours and exact declared prerequisite skills, then ranks deterministically. This establishes suitability under a synthetic declared-skill policy only. Verified admission eligibility, Rust, model tools, provider ingestion and checkout remain unimplemented. See [D1.3 evidence and limitations](docs/verification/D1.3.md) and the preserved [D1.2 record](docs/verification/D1.2.md).
+Current implementation: **D1.1 harness, D1.2 local NestJS/PostgreSQL catalog and D1.3 deterministic recommendations**, pending independent review. `GET /health` reports process health; authenticated `GET /catalog/offers` returns active synthetic offers scoped to server-authenticated demo tenants. PostgreSQL owns fixture prices and prerequisite metadata. Authenticated `POST /recommendations` validates learner input, filters tenant-authorized active offers by USD budget, weekly hours and exact declared prerequisite skills, then ranks deterministically. This establishes suitability under a synthetic declared-skill policy only. Verified admission eligibility, Rust, live model integration, provider ingestion and checkout remain unimplemented. See [D1.3 evidence and limitations](docs/verification/D1.3.md) and the preserved [D1.2 record](docs/verification/D1.2.md).
 
 The production-target architecture was designed during Day 0 according to the owner and is documented in [the architecture overview](docs/architecture/overview.md). The assigned target is a NestJS/TypeScript API, PostgreSQL on RDS, deterministic Rust ranking, OpenAI approved tool calling, and EC2 hosting, with Terraform and bounded LocalStack simulation later. LocalStack must fit the intended long-term Base plan; feature compatibility is currently unknown.
 
@@ -13,12 +13,20 @@ Status words have distinct meanings:
 | Term | Meaning and current evidence |
 | --- | --- |
 | Designed | Target decisions; not proof of executable behavior |
-| Implemented | Harness, local demo catalog and recommendation API; production identity and other target components remain absent |
-| Tested | Only executed checks in the D1.1, D1.2 and D1.3 verification records |
+| Implemented | Harness, local demo catalog, recommendation API, and advisor composition for local acceptance |
+| Tested | Executed Day 1 checks in the verification records and reported B3 advisor acceptance |
 | Emulated | No AWS services have been emulated |
 | Deployed | Nothing has been deployed |
 
 The seven business invariants and authorization rules are in [AGENTS.md](AGENTS.md). D1.2 implements demo authentication, tenant-scoped catalog access and stored price authority; D1.3 implements bounded declared-skill suitability and recommendations; admission verification, checkout and provider integration remain future requirements.
+
+### Advisor implementation and evidence
+
+The server-selected `fake-model-postgres` acceptance mode connects the authenticated advisor route and a local fake model to real PostgreSQL catalog reads. The normal application entrypoint leaves the advisor disabled. B3B-2B reported two passing tests, including in-process HTTP acceptance against local PostgreSQL. The acceptance checked both synthetic tenant scopes, grounded recommendations, and preservation of all six fixture rows. The Day 0 architecture describes the production target.
+
+- [HTTP-to-PostgreSQL sequence](docs/architecture/b3b-http-postgresql-sequence.md)
+- [Tenant trust boundaries](docs/architecture/b3b-tenant-trust-boundaries.md)
+- [B3 implementation and verification status](docs/architecture/b3-gate-implementation-status.md)
 
 ## Development and verification
 
