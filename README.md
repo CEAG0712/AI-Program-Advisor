@@ -6,7 +6,7 @@ An independent, synthetic **AI Backend Engineering / Forward Deployed Engineerin
 
 The NestJS/TypeScript application uses a synthetic PostgreSQL course catalog. Demo bearer authentication establishes tenant identity on the server. `GET /health` reports process health, and authenticated `GET /catalog/offers` returns active offers for that tenant. Authenticated `POST /recommendations` filters by budget, available study time and exact declared prerequisites, then ranks eligible offers deterministically. PostgreSQL supplies fixture prices and prerequisites. See the [D1.2 catalog record](docs/verification/D1.2.md) and [D1.3 recommendation evidence](docs/verification/D1.3.md).
 
-The policy establishes synthetic course suitability using self-declared skills. Verified admission, production identity, database Row-Level Security (RLS), provider catalog ingestion, checkout, Rust ranking, deployment and operational reliability work remain future scope. The Day 0 architecture targets Amazon Web Services (AWS), including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), with Terraform and bounded LocalStack experiments. LocalStack Base compatibility remains unverified. [Architecture overview](docs/architecture/overview.md) · [Business invariants](AGENTS.md)
+The policy establishes synthetic course suitability using self-declared skills. Verified admission, production identity, database Row-Level Security (RLS), provider catalog ingestion, checkout, deployment and operational reliability work remain future scope. The Day 0 architecture targets Amazon Web Services (AWS), including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), with Terraform and bounded LocalStack experiments. LocalStack Base compatibility remains unverified. [Architecture overview](docs/architecture/overview.md) · [Business invariants](AGENTS.md)
 
 ### Advisor implementation and evidence
 
@@ -27,7 +27,7 @@ With advisor composition enabled, send a demo bearer credential and `Content-Typ
 }
 ```
 
-| Verification | Observed result |
+| Earlier Day 2 verification | Observed result |
 | --- | --- |
 | Gate 2 offline unit and mocked integration tests | **238 passed, zero failed, zero skipped.** |
 | B3B-2B real PostgreSQL with a fake model | In-process HTTP verified both tenant scopes and preserved all six fixture rows. |
@@ -40,9 +40,45 @@ The controlled live success establishes neither an operational latency service-l
 - [Tenant trust boundaries](docs/architecture/b3b-tenant-trust-boundaries.md)
 - [B3 implementation and verification status](docs/architecture/b3-gate-implementation-status.md)
 
+### Day 3 Rust ranking
+
+**D3-R1** implements a standalone Rust executable with a versioned JSON protocol over standard input and output. It validates up to 1,000 candidates and returns up to ten offer identifiers (IDs), ordered by weekly study hours descending, then price in cents ascending, then ID in JavaScript-compatible UTF-16 code-unit order. It caps input at 1 MiB and output at 10 KiB and emits sanitized failure diagnostics. [Rust ranker](rust/ranker/src/main.rs)
+
+**D3-R2** adds an optional server-owned `rustRankerPath` composition setting. Normal startup still uses TypeScript ranking. TypeScript reads the authenticated tenant's catalog and applies the existing suitability rules. Rust receives only the eligible offer IDs, prices, and weekly study hours. The adapter verifies exact parity with the TypeScript ranking, and the recommendation service reconstructs the response from authorized catalog records. Each application allows two active ranking children and refuses additional work immediately, with zero retries. Each child has a configured 500 ms deadline, a 1 MiB input cap, a 10 KiB standard-output cap, a 4 KiB standard-error cap, and cancellation and shutdown cleanup. Ranking failures return sanitized unavailable outcomes. [Server composition](src/app.module.ts) · [Rust adapter](src/recommendations/rust-ranker.ts) · [Recommendation service](src/recommendations/recommendations.service.ts)
+
+**Unicode correction** aligns advisor ID validation with the PostgreSQL and Rust limit of 80 Unicode code points. The advisor rejects empty IDs, malformed Unicode, embedded null characters, overlength IDs, and duplicates. With the real Rust executable and fake PostgreSQL and model dependencies, both recommendation routes returned the same authorized offer, including an ID of 80 supplementary-plane code points. [Advisor validation](src/ai/advisor.service.ts) · [Composed test](tests/advisor.executor.unit.test.ts)
+
+**Retained Day 3 verification** recorded 279 offline Node.js tests passed with zero failures or skips, 20 Rust tests passed with zero failures, successful TypeScript typecheck and build, and a successful Rust release build and format check. The optional Clippy command could not run because the component was unavailable. Day 3 left real PostgreSQL and provider integration, clean-machine portability, and production behavior unverified. [Day 3 verification record](docs/verification/D3-rust-ranking.md)
+
+| Candidates | TypeScript median | Full Rust adapter median |
+| ---: | ---: | ---: |
+| 7 | 0.005 ms | 2.881 ms |
+| 1,000 | 0.024 ms | 4.645 ms |
+
+The local test used 25 paired measurements per fixture. The adapter measurement includes process launch, serialization, the TypeScript reference sort, response parsing, and parity checks. TypeScript was faster in both tested workloads and remains the default. The measurements do not establish a production service-level objective. [Benchmark methodology](docs/verification/D3-rust-ranking.md#benchmark)
+
 ## Development and verification
 
 Use Node.js 24.x, npm 11.x and Git. npm is the package manager. Exact NestJS, PostgreSQL driver, TypeScript and typing versions are locked.
+
+### Proposed Day 3 reproduction
+
+Use a Rust toolchain that supports edition 2024, a native linker, and `rustfmt` alongside Node.js 24 and npm 11. On a supported shell, the following recipe uses locked packages and a locally built release executable. Initial dependency retrieval requires authorized network access or populated caches. With the Cargo dependencies cached, add `--offline` to the Cargo build and test commands. The Node.js suite uses fake dependencies and requires no database, model service, or credentials. This recipe was derived from the retained runs and has not been verified on a clean machine. The ordinary `npm run test:unit` script runs the catalog unit file only.
+
+```sh
+npm ci --ignore-scripts --no-audit --no-fund
+export CARGO_TARGET_DIR="$PWD/rust/ranker/target"
+cargo build --manifest-path rust/ranker/Cargo.toml --locked --release
+cargo fmt --manifest-path rust/ranker/Cargo.toml --check
+cargo test --manifest-path rust/ranker/Cargo.toml --locked
+npm run typecheck
+node node_modules/typescript/bin/tsc --noEmit false --outDir dist/b3c2-day3 --incremental false
+P3_D3_R2_RANKER="$CARGO_TARGET_DIR/release/p3-ranker" \
+  P3_B3C2_TEST_BUILD=dist/b3c2-day3 \
+  node --test --test-concurrency=1 dist/b3c2-day3/tests/*.unit.test.js tests/b3c2-runner.offline.test.mjs
+```
+
+### TypeScript development
 
 Ordinary development workflow, with dependency installation authorized:
 
@@ -96,7 +132,7 @@ Ctrl-C stops the foreground API. `docker compose stop postgres` stops this proje
 
 ## Review and future publication
 
-The Day 2 publication candidate requires independent review and separate publication authorization. Review the full file set and secret audit before staging approved files. After publication, independently verify the remote commit and file set and record the evidence.
+The Day 3 implementation, Unicode correction, and documentation completed independent review. Publication is a separately authorized operation. Review the complete approved file set and publication audit before staging. After authorized publication, independently verify the remote commit and file set and record the evidence. [Day 3 publication status](docs/verification/D3-rust-ranking.md#security-and-publication)
 
 For session recovery, follow AGENTS.md, inspect Git and the verification record, and obtain the next increment's authorization. Day 1 has a 240-minute ceiling; the original 45-minute harness allocation includes D1.0. Total implementation is limited to 20 hours with a provisional $15 spending ceiling. Record measured work, not inferred time.
 
