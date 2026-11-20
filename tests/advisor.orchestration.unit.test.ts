@@ -14,7 +14,7 @@ const makeFacts = () => ({ recommendations: [
 ] });
 const proposal = (args: unknown = maria) => ({ name: 'find_suitable_courses', arguments: JSON.stringify(args) });
 const initial = (proposals: unknown[] = [proposal()]) => JSON.stringify({ kind: 'tool_proposals', proposals });
-const final = () => JSON.stringify({ kind: 'explanation', plan: { offers: makeFacts().recommendations.map((o) =>
+const final = (facts = makeFacts()) => JSON.stringify({ kind: 'explanation', plan: { offers: facts.recommendations.map((o) =>
   ({ offer_id: o.offer_id, reason_ids: ['budget', 'hours', 'skills'] })) } });
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -286,6 +286,15 @@ test('cancel during final phase returns cancelled rather than fallback', async (
 const invalidFacts: [string, () => unknown][] = [
   ['absent', () => undefined], ['empty object', () => ({})],
   ['duplicate IDs', () => ({ recommendations: [makeFacts().recommendations[0], makeFacts().recommendations[0]] })],
+  ...Object.entries({
+    '81 supplementary code points': '🦀'.repeat(81),
+    '81 ASCII code points': 'a'.repeat(81),
+    'empty ID': '',
+    'unpaired high surrogate': 'id-\ud800',
+    'unpaired low surrogate': 'id-\udc00',
+    'embedded NUL': 'id-\0-tail',
+  }).map(([name, offer_id]): [string, () => unknown] =>
+    [name, () => ({ recommendations: [{ ...makeFacts().recommendations[0], offer_id }] })]),
   ['too many', () => ({ recommendations: Array.from({ length: 11 }, (_, i) => ({ ...makeFacts().recommendations[0], offer_id: String(i) })) })],
   ['oversize', () => ({ recommendations: [{ ...makeFacts().recommendations[0], title: 'a'.repeat(32768) }] })],
   ...(['price_cents', 'currency', 'weekly_study_hours', 'required_skills', 'reasons', 'offer_id', 'title'] as const).map((key): [string, () => unknown] =>
@@ -302,6 +311,30 @@ for (const [name, value] of invalidFacts) test(`invalid facts: ${name} rejects t
   const f = fixture(undefined, async () => value());
   assert.deepEqual(await f.run(), { status: 'unavailable', code: 'INVALID_FACTS' });
   assert.equal(f.calls.length, 1); assert.equal(f.businessCalls.length, 1);
+});
+for (const [name, id] of Object.entries({
+  supplementary: '🦀'.repeat(80),
+  ASCII: 'a'.repeat(80),
+  mixed: 'a\u0301🦀'.repeat(26) + 'é漢',
+})) {
+  test('grounded advisor preserves an 80-code-point ' + name + ' ID exactly', async () => {
+    const facts = makeFacts();
+    facts.recommendations[0].offer_id = id;
+    assert.equal([...id].length, 80);
+    const f = fixture([initial(), final(facts)], async () => facts);
+    assert.deepEqual(await f.run(), { status: 'completed', response: { source: 'accepted_plan', ...facts } });
+    assert.equal(f.calls.length, 2);
+  });
+}
+test('otherwise valid model plans with invented or altered Unicode IDs use the original facts', async () => {
+  const facts = makeFacts();
+  facts.recommendations[0].offer_id = '🦀'.repeat(80);
+  for (const offer_id of ['invented', '🦀'.repeat(79) + '🦞']) {
+    const alteredFacts = { recommendations: [{ ...facts.recommendations[0], offer_id }, facts.recommendations[1]] };
+    const f = fixture([initial(), final(alteredFacts)], async () => facts);
+    assert.deepEqual(await f.run(), { status: 'completed', response: { source: 'deterministic_fallback', ...facts } });
+    assert.equal(f.calls.length, 2);
+  }
 });
 test('successful empty facts are valid, not a dependency failure', async () => {
   const f = fixture([initial(), JSON.stringify({ kind: 'explanation', plan: { offers: [] } })],

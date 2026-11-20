@@ -1,4 +1,5 @@
 import type { TenantContext } from '../catalog/tenant-context.js';
+import { isCatalogText } from '../recommendations/ranking.js';
 import type { RecommendationRequest, RecommendationResponse } from '../recommendations/recommendations.types.js';
 import { REASONS, validateRecommendationRequest } from '../recommendations/recommendations.policy.js';
 import { TOOL_NAME, validateToolProposal, type ToolRejection } from './tool.contract.js';
@@ -108,7 +109,7 @@ function factsFrom(value: unknown, confirmed: RecommendationRequest): Recommenda
   const ids = new Set<string>();
   for (const offer of facts.recommendations) {
     if (!exact(offer, ['offer_id', 'title', 'price_cents', 'currency', 'weekly_study_hours', 'required_skills', 'reasons']) ||
-        typeof offer.offer_id !== 'string' || !offer.offer_id.length || offer.offer_id.length > 128 || ids.has(offer.offer_id) ||
+        !isCatalogText(offer.offer_id) || !offer.offer_id || [...offer.offer_id].length > 80 || ids.has(offer.offer_id) ||
         typeof offer.title !== 'string' || !offer.title.length || offer.currency !== 'USD' ||
         !Array.isArray(offer.reasons) || offer.reasons.length !== REASONS.length ||
         !REASONS.every((reason, i) => offer.reasons instanceof Array && offer.reasons[i] === reason)) {

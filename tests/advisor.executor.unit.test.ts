@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
-import subprocess from 'node:child_process';
+import subprocess, { type SpawnOptionsWithStdioTuple } from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { test, mock } from 'node:test';
 import { IncomingMessage, ServerResponse } from 'node:http';
@@ -361,6 +361,45 @@ test('D3-R2 composed HTTP and advisor with release Rust and a fake pool', { skip
     }, candidates, overrides);
     assert.ok(ranker);
     await assert.rejects(ranker.rank([]), /temporarily unavailable/);
+  });
+  await t.test('both routes preserve an 80-supplementary-character ID through the real Rust process', async () => {
+    const id = '🦀'.repeat(80);
+    assert.equal([...id].length, 80);
+    const { tenant_id, active, ...offer } = row('academy-a', id, 6, 18765, ['basic-python']);
+    const expected = { recommendations: [{ ...offer, reasons: [...REASONS] }] };
+    const payloads: unknown[] = [];
+    const spawn = subprocess.spawn;
+    const intercepted = mock.method(subprocess, 'spawn',
+      (file: string, args: readonly string[], options: SpawnOptionsWithStdioTuple<'pipe', 'pipe', 'pipe'>) => {
+        const child = spawn(file, args, options);
+        const end = child.stdin.end.bind(child.stdin);
+        mock.method(child.stdin, 'end', (payload: Buffer) => {
+          payloads.push(JSON.parse(payload.toString('utf8')));
+          return end(payload);
+        });
+        return child;
+      });
+    syncBuiltinESMExports();
+    try {
+      await withApp(async (app, db) => {
+        assert.deepEqual(await dispatch(app, { path: '/recommendations', body: request }),
+          { status: 200, cache: 'no-store', body: expected });
+        assert.deepEqual(await dispatch(app),
+          { status: 200, cache: 'no-store', body: { status: 'completed', response: { source: 'accepted_plan', ...expected } } });
+        assert.deepEqual(db.calls, Array(2).fill({ sql: CATALOG_SQL + ' LIMIT $2', values: [tenant_id, 1001] }));
+      }, [{ ...offer, tenant_id, active }, row('academy-b', 'other-tenant-offer', 6, 1)], overrides);
+      const rustRequest = { protocol_version: 1, offers: [
+        { offer_id: id, price_cents: offer.price_cents, weekly_study_hours: offer.weekly_study_hours },
+      ] };
+      assert.deepEqual(payloads, [rustRequest, rustRequest]);
+      assert.equal(intercepted.mock.callCount(), 2);
+      for (const call of intercepted.mock.calls) assert.deepEqual(call.arguments, [
+        rankerBinary, [], { shell: false, env: {}, stdio: ['pipe', 'pipe', 'pipe'] },
+      ]);
+    } finally {
+      intercepted.mock.restore();
+      syncBuiltinESMExports();
+    }
   });
   await t.test('only bounded and valid catalog rows can reach the ranker', async () => {
     const bounded = Array.from({ length: 1000 }, (_, i) => row('academy-a', 'id-' + String(i).padStart(4, '0'), 2, 1));
