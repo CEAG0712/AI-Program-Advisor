@@ -5,15 +5,14 @@ import type { RecommendationRequest } from '../recommendations/recommendations.t
 import type { BusinessExecutor } from './advisor.service.js';
 
 /** Server-owned adapter: tenant provenance belongs to the guarded caller.
- * Abort checks are cooperative. The service has no AbortSignal parameter;
- * a query already running in PostgreSQL may continue after cancellation. */
+ * A query already running in PostgreSQL may continue after cancellation. */
 @Injectable()
 export class RecommendationsExecutor implements BusinessExecutor {
   constructor(@Inject(RecommendationsService) private readonly service: RecommendationsService) {}
 
   async execute(trustedTenant: TenantContext, validatedArguments: RecommendationRequest, signal: AbortSignal) {
     signal.throwIfAborted();
-    const result = await this.service.recommendations(trustedTenant, validatedArguments);
+    const result = await this.service.recommendations(trustedTenant, validatedArguments, signal);
     signal.throwIfAborted();
     return result;
   }

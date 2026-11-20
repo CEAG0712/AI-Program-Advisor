@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { CourseOffer } from '../catalog/catalog.types.js';
 import type { RecommendationRequest, RecommendationResponse } from './recommendations.types.js';
+import type { RankingCandidate } from './ranking.js';
 
 const KEYS = ['budget_cents', 'weekly_hours', 'known_skills'];
 const SKILL = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -33,13 +34,25 @@ export function validateRecommendationRequest(body: unknown): RecommendationRequ
 /** Input must already be the verified tenant's active catalog. Declared-skill suitability
  * only: no formal admission, competency verification, reservation or checkout authority. */
 export function recommend(offers: readonly CourseOffer[], request: RecommendationRequest): RecommendationResponse {
+  const eligible = suitableOffers(offers, request);
+  eligible.sort(compareRankingCandidates);
+  return recommendationFacts(eligible.slice(0, MAX_RECOMMENDATIONS));
+}
+
+export function suitableOffers(offers: readonly CourseOffer[], request: RecommendationRequest): CourseOffer[] {
   const skills = new Set(request.known_skills);
-  const eligible = offers.filter((offer) => offer.currency === 'USD' &&
+  return offers.filter((offer) => offer.currency === 'USD' &&
     offer.price_cents <= request.budget_cents && offer.weekly_study_hours <= request.weekly_hours &&
     offer.required_skills.every((skill) => skills.has(skill)));
-  eligible.sort((a, b) => b.weekly_study_hours - a.weekly_study_hours ||
-    a.price_cents - b.price_cents || (a.offer_id < b.offer_id ? -1 : a.offer_id > b.offer_id ? 1 : 0));
-  return { recommendations: eligible.slice(0, MAX_RECOMMENDATIONS).map((offer) => ({
+}
+
+export function compareRankingCandidates(a: RankingCandidate, b: RankingCandidate): number {
+  return b.weekly_study_hours - a.weekly_study_hours ||
+    a.price_cents - b.price_cents || (a.offer_id < b.offer_id ? -1 : a.offer_id > b.offer_id ? 1 : 0);
+}
+
+export function recommendationFacts(offers: readonly CourseOffer[]): RecommendationResponse {
+  return { recommendations: offers.map((offer) => ({
     offer_id: offer.offer_id, title: offer.title, price_cents: offer.price_cents,
     currency: offer.currency, required_skills: [...offer.required_skills],
     weekly_study_hours: offer.weekly_study_hours, reasons: [...REASONS],

@@ -1,5 +1,7 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import subprocess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import { test, mock } from 'node:test';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Server, Socket } from 'node:net';
@@ -12,7 +14,8 @@ import type { ModelClient, ModelRequest } from '../src/ai/model.client.js';
 import { CatalogRepository, CATALOG_SQL } from '../src/catalog/catalog.repository.js';
 import type { CourseOffer, TenantId } from '../src/catalog/catalog.types.js';
 import { RecommendationsService } from '../src/recommendations/recommendations.service.js';
-import { validateRecommendationRequest, REASONS } from '../src/recommendations/recommendations.policy.js';
+import { recommend, validateRecommendationRequest, REASONS } from '../src/recommendations/recommendations.policy.js';
+import { OFFER_RANKER, type OfferRanker } from '../src/recommendations/ranking.js';
 
 const config = { databaseUrl: 'postgresql://p3_d12:offline-placeholder@127.0.0.1:55432/p3_d12',
   tokenA: 'offline-placeholder-academy-a-0000', tokenB: 'offline-placeholder-academy-b-0000', port: 3000 };
@@ -41,11 +44,12 @@ async function offline(run: () => Promise<void>) {
 test('B3B adapter', async (t) => offline(async () => {
   await t.test('exact forwarding once, no mutation, and identical result object', async () => {
     const result = Object.freeze({ recommendations: [] }); let count = 0;
-    const fake = { recommendations: async (scope: unknown, args: unknown) => {
-      count++; assert.equal(scope, tenant); assert.equal(args, request); return result;
+    const cancellation = signal();
+    const fake = { recommendations: async (scope: unknown, args: unknown, forwardedSignal: unknown) => {
+      count++; assert.equal(scope, tenant); assert.equal(args, request); assert.equal(forwardedSignal, cancellation); return result;
     } } as unknown as RecommendationsService;
     const before = JSON.stringify([tenant, request]);
-    assert.equal(await new RecommendationsExecutor(fake).execute(tenant, request, signal()), result);
+    assert.equal(await new RecommendationsExecutor(fake).execute(tenant, request, cancellation), result);
     assert.equal(count, 1); assert.equal(JSON.stringify([tenant, request]), before);
   });
   await t.test('successful nonempty facts retain every field without rewriting', async () => {
@@ -77,6 +81,22 @@ test('B3B adapter', async (t) => offline(async () => {
     const reason = new Error('Cancelled before adapter continuation');
     result.resolve({ recommendations: [] }); cancellation.abort(reason);
     await assert.rejects(pending, (e) => e === reason); assert.equal(count, 1);
+  });
+  await t.test('a cancelled pending database read cannot start ranking when it completes', async () => {
+    const read = deferred<CourseOffer[]>();
+    const query = mock.fn(() => read.promise);
+    const rank = mock.fn(async () => ['owned']);
+    const repository = { recommendationCandidates: query } as unknown as CatalogRepository;
+    const cancellation = new AbortController();
+    const reason = new Error('Cancelled while waiting for synthetic rows');
+    const service = new RecommendationsService(repository, { rank });
+    const pending = service.recommendations(tenant, request, cancellation.signal);
+    assert.equal(query.mock.callCount(), 1);
+    cancellation.abort(reason);
+    read.resolve([{ offer_id: 'owned', title: 'Offline owned', price_cents: 100, currency: 'USD',
+      required_skills: [], weekly_study_hours: 1 }]);
+    await assert.rejects(pending, (error) => error === reason);
+    assert.equal(rank.mock.callCount(), 0);
   });
 }));
 
@@ -275,5 +295,111 @@ test('B3B HTTP fake-pool', { timeout: 15000 }, async (t) => offline(async () => 
       assert.deepEqual(recommendations.body.recommendations.map((r: CourseOffer) => r.offer_id), ['a-backend', 'a-foundations']);
       assert.equal(db.calls.length, 2);
     });
+  });
+}));
+
+test('default application keeps TypeScript ranking and ignores external mode selection', async () => offline(async () => {
+  const spawn = mock.method(subprocess, 'spawn');
+  syncBuiltinESMExports();
+  try {
+    await withApp(async (app) => {
+      const path = '/recommendations?rustRankerPath=/unused';
+      const result = await dispatch(app, { path, body: request, headers: { 'x-ranking-mode': 'rust' } });
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.body, recommend(rows.filter((r) => r.tenant_id === 'academy-a' && r.active), request));
+      assert.equal((await dispatch(app, { path, body: { ...request, rustRankerPath: '/unused' } })).status, 400);
+    }, rows, {});
+    assert.equal(spawn.mock.callCount(), 0);
+  } finally {
+    spawn.mock.restore();
+    syncBuiltinESMExports();
+  }
+}));
+
+const rankerBinary = process.env.P3_D3_R2_RANKER;
+test('D3-R2 composed HTTP and advisor with release Rust and a fake pool', { skip: !rankerBinary }, async (t) => offline(async () => {
+  const overrides = { advisorMode: 'fake-model-postgres', rustRankerPath: rankerBinary } as const;
+  const candidates = [...rows, row('academy-a', '𐀀', 6, 100, ['basic-python']), row('academy-a', '\ue000', 6, 100),
+    row('academy-a', 'too-long', 7, 0), row('academy-a', 'too-costly', 6, 30001),
+    { ...row('academy-a', 'foreign-currency', 6, 0), currency: 'EUR' }];
+  await t.test('both tenants, exact fields and advisor grounding', async () => {
+    let ranker: OfferRanker | undefined;
+    await withApp(async (app, db) => {
+      ranker = app.get<OfferRanker>(OFFER_RANKER);
+      const spy = mock.method(ranker, 'rank');
+      const model = mock.method(app.get<ModelClient>(FAKE_ADVISOR_MODEL), 'request');
+      try {
+        for (const [token, scope, other, skills, ordered] of [
+          [config.tokenA, 'academy-a', 'academy-b', ['basic-python'], ['𐀀', '\ue000', 'a-backend', 'a-foundations']],
+          [config.tokenB, 'academy-b', 'academy-a', ['basic-sql'], ['b-data', 'b-foundations']],
+        ] as const) {
+          const constraints = { ...request, known_skills: skills };
+          const expected = recommend(candidates.filter((r) => r.tenant_id === scope && r.active), constraints);
+          assert.deepEqual(expected.recommendations.map((offer) => offer.offer_id), ordered);
+          const reply = await dispatch(app, { token, path: '/recommendations?tenantId=' + other,
+            headers: { 'x-tenant-id': other }, body: constraints });
+          assert.deepEqual(reply, { status: 200, cache: 'no-store', body: expected });
+          const advice = await dispatch(app, { token, body: { confirmed: true, constraints } });
+          assert.equal(advice.status, 200);
+          assert.deepEqual(advice.body, { status: 'completed', response: { source: 'accepted_plan', ...expected } });
+          assert.deepEqual(db.calls.slice(-2), Array(2).fill({ sql: CATALOG_SQL + ' LIMIT $2', values: [scope, 1001] }));
+          const sent = spy.mock.calls.at(-1)!.arguments[0];
+          assert.deepEqual(sent.map((offer) => offer.offer_id).sort(), [...ordered].sort());
+          for (const offer of sent) assert.deepEqual(Object.keys(offer).sort(), ['offer_id', 'price_cents', 'weekly_study_hours']);
+          const final = model.mock.calls.at(-1)!.arguments[0];
+          assert.equal(final.phase, 'final');
+          if (final.phase === 'final') assert.deepEqual(final.facts, { source: 'deterministic_fallback', ...expected });
+        }
+        assert.deepEqual(await dispatch(app, { path: '/recommendations', body: { ...request, budget_cents: 0 } }),
+          { status: 200, cache: 'no-store', body: { recommendations: [] } });
+        assert.equal((await dispatch(app, { token: null, path: '/recommendations', body: request })).status, 401);
+        assert.equal(spy.mock.callCount(), 4);
+      } finally {
+        spy.mock.restore();
+        model.mock.restore();
+      }
+    }, candidates, overrides);
+    assert.ok(ranker);
+    await assert.rejects(ranker.rank([]), /temporarily unavailable/);
+  });
+  await t.test('only bounded and valid catalog rows can reach the ranker', async () => {
+    const bounded = Array.from({ length: 1000 }, (_, i) => row('academy-a', 'id-' + String(i).padStart(4, '0'), 2, 1));
+    await withApp(async (app) => {
+      const result = await dispatch(app, { path: '/recommendations', body: request });
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.body, recommend(bounded, request));
+      assert.equal(result.body.recommendations.length, 10);
+    }, bounded, overrides);
+    for (const invalid of [
+      [...bounded, row('academy-a', 'overflow', 2, 1)],
+      [row('academy-a', 'negative-even-if-ineligible', 7, -1)],
+      [{ ...rows[0], required_skills: [null] } as unknown as FixtureRow],
+      [{ ...rows[0], title: '   ' }],
+      [{ ...rows[0], currency: 'usd' }],
+      [rows[0], rows[0]],
+    ]) {
+      await withApp(async (app, db) => {
+        const spy = mock.method(app.get<OfferRanker>(OFFER_RANKER), 'rank');
+        try {
+          assert.equal((await dispatch(app, { path: '/recommendations', body: request })).status, 503);
+          assert.equal(spy.mock.callCount(), 0);
+          assert.deepEqual(db.calls, [{ sql: CATALOG_SQL + ' LIMIT $2', values: ['academy-a', 1001] }]);
+        } finally { spy.mock.restore(); }
+      }, invalid, overrides);
+    }
+  });
+  await t.test('ranking failure becomes a sanitized 503 on both routes, with no final model phase', async () => {
+    await withApp(async (app) => {
+      const model = mock.method(app.get<ModelClient>(FAKE_ADVISOR_MODEL), 'request');
+      try {
+        assert.deepEqual(await dispatch(app, { path: '/recommendations', body: request }), {
+          status: 503, cache: 'no-store', body: {
+            statusCode: 503, error: 'Service Unavailable', message: 'Recommendation ranking temporarily unavailable.',
+          },
+        });
+        assert.deepEqual(await dispatch(app), { status: 503, cache: 'no-store', body: failure('ADVISOR_UNAVAILABLE') });
+        assert.equal(model.mock.callCount(), 1);
+      } finally { model.mock.restore(); }
+    }, rows, { ...overrides, rustRankerPath: rankerBinary + '/not-an-executable' });
   });
 }));

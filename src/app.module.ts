@@ -11,6 +11,8 @@ import { APP_CONFIG, DemoAuthGuard } from './catalog/demo-auth.guard.js';
 
 import { RecommendationsController } from './recommendations/recommendations.controller.js';
 import { RecommendationsService } from './recommendations/recommendations.service.js';
+import { OFFER_RANKER } from './recommendations/ranking.js';
+import { RustRanker } from './recommendations/rust-ranker.js';
 import { ADVISOR, AdvisorController, AdvisorExceptionFilter, isAdvisorPath } from './ai/advisor.controller.js';
 import { AdvisorService } from './ai/advisor.service.js';
 import { RecommendationsExecutor } from './ai/advisor.executor.js';
@@ -40,6 +42,8 @@ function fakeModelClient(): ModelClient {
 export interface ApplicationOverrides {
   readonly advisor?: AdvisorService;
   readonly databasePool?: Pool;
+  /** Opt in using the absolute path of an operator-trusted D3-R1 executable. */
+  readonly rustRankerPath?: string;
   readonly advisorMode?: 'fake-model-postgres' | 'openai-model-postgres';
   readonly advisorLatency?: 'b3c2f-experimental';
   readonly openai?: OpenAIModelOptions;
@@ -71,6 +75,8 @@ export class AppModule {
       controllers: [HealthController, CatalogController, RecommendationsController, AdvisorController],
       providers: [
         { provide: APP_CONFIG, useValue: config },
+        ...(overrides.rustRankerPath === undefined ? [] :
+          [{ provide: OFFER_RANKER, useValue: new RustRanker(overrides.rustRankerPath) }]),
         ...(modelProvider ? [
           RecommendationsExecutor,
           modelProvider,
