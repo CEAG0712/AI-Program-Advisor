@@ -8,6 +8,10 @@ The NestJS/TypeScript application uses a synthetic PostgreSQL course catalog. De
 
 The policy establishes synthetic course suitability using self-declared skills. Verified admission, production identity, database Row-Level Security (RLS), provider catalog ingestion, checkout, deployment and operational reliability work remain future scope. The Day 0 architecture targets Amazon Web Services (AWS), including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), with Terraform and bounded LocalStack experiments. LocalStack Base compatibility remains unverified. [Architecture overview](docs/architecture/overview.md) · [Business invariants](AGENTS.md)
 
+### Day 4 infrastructure evidence
+
+The AWS Terraform foundation passed offline validation and one mocked topology test with ten assertions. A separate LocalStack Community 4.14.0 exercise created, inspected and removed the VPC and application subnet. Terraform ended with zero managed resources, and both exact IDs were absent from the emulator. Real AWS deployment remains unverified. [LocalStack diagram](docs/architecture/d4-localstack.svg) · [Verification and cleanup](docs/verification/D4-localstack.md)
+
 ### Advisor implementation and evidence
 
 The advisor validates `find_suitable_courses` proposals against confirmed constraints before dispatching a single tenant-scoped lookup. Bounded two-phase orchestration supports a local fake model and a real OpenAI Responses API adapter. The server renders recommendations from authorized database facts and can use deterministic fallback when a final model explanation fails validation or is unavailable after a successful read.

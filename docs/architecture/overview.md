@@ -35,8 +35,9 @@ The NestJS/TypeScript advisor authenticates a structured request and passes serv
 | Status | Meaning and evidence |
 | --- | --- |
 | **Implemented and tested** | Local synthetic catalog, demo bearer authentication, deterministic recommendations, bounded advisor orchestration and the OpenAI Responses API adapter. Verification includes offline mocks, real local PostgreSQL with a fake model and one successful controlled OpenAI and PostgreSQL acceptance. |
-| **Designed or targeted** | Rust ranking, future provider catalog integration, Amazon Web Services (AWS) infrastructure including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), Terraform and bounded LocalStack experimentation. |
-| **Not verified** | Production deployment, production authentication and authorization, database-enforced tenant isolation, verified admission eligibility and operational SLOs. No AWS services were emulated and no application or infrastructure was deployed. |
+| **Verified in LocalStack** | A local Terraform runner created, inspected and removed one VPC and one application subnet in LocalStack Community 4.14.0. Both resource IDs were absent after cleanup and Terraform state was empty. [Diagram](d4-localstack.svg) · [Day 4 record](../verification/D4-localstack.md) |
+| **Designed or targeted** | Rust ranking, future provider catalog integration, and Amazon Web Services (AWS) infrastructure including Elastic Compute Cloud (EC2) and Relational Database Service (RDS). The AWS Terraform foundation passed offline validation and a mocked topology test. [Terraform foundation](../verification/D4-R2-infrastructure.md) |
+| **Unverified** | Real AWS infrastructure and application deployment, production authentication and authorization, database-enforced tenant isolation, verified admission eligibility and operational SLOs. |
 
 ## Reading guide
 

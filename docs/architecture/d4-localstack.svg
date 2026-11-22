@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 980 584" width="980" height="584" role="img" aria-labelledby="diagram-title diagram-description">
+  <title id="diagram-title">P3 Day 4 LocalStack infrastructure lifecycle</title>
+  <desc id="diagram-description">A local Docker Terraform runner used the EC2 loopback endpoint of LocalStack Community 4.14.0. It created and inspected VPC 10.31.0.0/16 and its application subnet 10.31.0.0/24 in us-east-1a, then destroyed both. Terraform state ended with zero managed resources. No real AWS deployment occurred.</desc>
+  <metadata>AWS architecture artwork from the July 31, 2026 icon package at https://aws.amazon.com/architecture/icons/. The Client and Virtual private cloud group icons retain their original vector artwork.</metadata>
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" viewBox="0 0 8 8">
+      <path d="M0 0l8 4-8 4z" fill="#655a79"/>
+    </marker>
+    <style>
+      text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #212039; }
+      .heading { font-size: 32px; font-weight: 700; }
+      .section { font-size: 17px; font-weight: 700; }
+      .label { font-size: 15px; font-weight: 650; }
+      .detail { font-size: 14px; fill: #49445e; }
+      .code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 14px; fill: #49445e; }
+      .arrow { fill: none; stroke: #655a79; stroke-width: 1.7; marker-end: url(#arrowhead); }
+    </style>
+  </defs>
+  <g id="background">
+    <rect width="980" height="584" fill="#f9f8fc"/>
+  </g>
+  <g id="header">
+    <text x="32" y="54" class="heading">P3 Day 4 infrastructure lifecycle</text>
+    <text x="33" y="82" class="detail">LocalStack simulation · No real AWS deployment</text>
+  </g>
+  <g id="docker-boundary">
+    <rect x="32" y="111" width="916" height="287" rx="18" fill="#fff" stroke="#c4bfd2" stroke-dasharray="6 4"/>
+    <text x="52" y="139" class="section">Local Docker environment</text>
+  </g>
+  <g id="runner">
+    <rect x="52" y="191" width="239" height="139" rx="12" fill="#f6f4fa" stroke="#c4bfd2"/>
+    <svg x="65" y="201" width="43" height="43" viewBox="0 0 48 48" aria-hidden="true">
+      <title>Icon-Resource/General-Resource/Res_Client_48_Light</title>
+      <g id="Icon-Resource/General-Resource/Res_Client_48" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+          <path d="M42.299,38.773 L42.299,40.696 C42.299,41.134 41.945,41.49 41.506,41.49 L30.762,41.49 C30.323,41.49 29.968,41.134 29.968,40.696 L29.968,38.773 C29.968,38.335 30.323,37.98 30.762,37.98 L41.506,37.98 C41.945,37.98 42.299,38.335 42.299,38.773 L42.299,38.773 Z M43.797,42.399 C43.797,42.754 43.508,43.044 43.153,43.044 L4.645,43.044 C4.289,43.044 4,42.754 4,42.399 L4,37.011 C4,36.656 4.289,36.367 4.645,36.367 L43.153,36.367 C43.508,36.367 43.797,36.656 43.797,37.011 L43.797,42.399 Z M43.153,34.367 L4.645,34.367 C3.187,34.367 2,35.553 2,37.011 L2,42.399 C2,43.857 3.187,45.044 4.645,45.044 L43.153,45.044 C44.611,45.044 45.797,43.857 45.797,42.399 L45.797,37.011 C45.797,35.553 44.611,34.367 43.153,34.367 L43.153,34.367 Z M7.501,27.21 L40.264,27.21 L40.264,7.502 L7.501,7.502 L7.501,27.21 Z M40.842,5.502 L6.924,5.502 C6.14,5.502 5.501,6.139 5.501,6.923 L5.501,27.788 C5.501,28.572 6.14,29.21 6.924,29.21 L40.842,29.21 C41.626,29.21 42.264,28.572 42.264,27.788 L42.264,6.923 C42.264,6.139 41.626,5.502 40.842,5.502 L40.842,5.502 Z M43.797,30.067 C43.797,30.422 43.508,30.711 43.153,30.711 L4.645,30.711 C4.289,30.711 4,30.422 4,30.067 L4,4.644 C4,4.289 4.289,4 4.645,4 L43.153,4 C43.508,4 43.797,4.289 43.797,4.644 L43.797,30.067 Z M43.153,2 L4.645,2 C3.187,2 2,3.186 2,4.644 L2,30.067 C2,31.525 3.187,32.711 4.645,32.711 L43.153,32.711 C44.611,32.711 45.797,31.525 45.797,30.067 L45.797,4.644 C45.797,3.186 44.611,2 43.153,2 L43.153,2 Z" id="Fill-3" fill="#232F3D"></path>
+      </g>
+    </svg>
+    <text x="69" y="265" class="section">Docker Terraform runner</text>
+    <text x="69" y="288" class="detail">Terraform 1.11.2</text>
+    <text x="69" y="309" class="detail">AWS provider 5.100.0</text>
+    <path d="M291 264H492" class="arrow"/>
+    <text x="392" y="239" text-anchor="middle" class="label">Loopback EC2 API</text>
+    <text x="392" y="286" text-anchor="middle" class="code">127.0.0.1:4566</text>
+    <text x="392" y="307" text-anchor="middle" class="detail">Dummy credentials</text>
+  </g>
+  <g id="emulator">
+    <rect x="500" y="151" width="428" height="227" rx="12" fill="#fff" stroke="#ada3c5"/>
+    <text x="520" y="179" class="section">LocalStack Community 4.14.0</text>
+    <rect x="520" y="194" width="388" height="166" rx="10" fill="#f4efff" stroke="#9371d7"/>
+    <svg x="535" y="208" width="36" height="36" viewBox="0 0 40 40" aria-hidden="true">
+      <title>Icon-Architecture-Group/32/Virtual-private-cloud-VPC_32</title>
+      <g id="Icon-Architecture-Group/32/Virtual-private-cloud-VPC_32" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+          <rect id="Rectangle" fill="#8C4FFF" x="0" y="0" width="40" height="40"></rect>
+          <path d="M30.9707,21.0293596 L28.0267,19.7663596 L28.0267,30.2553596 C30.5717,29.9033596 30.9587,27.2873596 30.9747,27.1683596 L30.9707,21.0293596 Z M27.0267,30.2693596 L27.0267,19.7593596 L23.9917,21.0323596 L23.9917,27.2333596 C24.0047,27.2873596 24.4367,30.0003596 27.0267,30.2693596 L27.0267,30.2693596 Z M27.3327,18.5473596 C27.4567,18.4943596 27.5987,18.4953596 27.7237,18.5483596 L31.6677,20.2403596 C31.8517,20.3193596 31.9707,20.4993596 31.9707,20.6993596 L31.9707,27.2333596 C31.7877,28.6803596 30.6137,31.2963596 27.4437,31.2963596 C24.3687,31.2963596 23.1897,28.6843596 22.9957,27.3023596 L22.9917,20.6993596 C22.9917,20.4983596 23.1127,20.3163596 23.2977,20.2383596 L27.3327,18.5473596 Z M32.9827022,19.1843596 L27.5217,16.7783596 L21.9917,19.1053596 L21.9917,26.2333596 C21.9907,26.2753596 21.9377,29.1013596 23.6487,30.8563596 C24.5657,31.7973596 25.8427,32.2753596 27.4437,32.2753596 C29.0457,32.2753596 30.3307,31.7963596 31.2627,30.8533596 C32.9977,29.0953596 32.9827022,26.2683596 32.9827022,26.2403596 L32.9827022,19.1843596 Z M31.9797,31.5503596 C30.8527,32.6943596 29.3257,33.2753596 27.4437,33.2753596 C25.5597,33.2753596 24.0397,32.6943596 22.9267,31.5483596 C20.9217,29.4853596 20.9877,26.3513596 20.9917,26.2193596 L20.9917,18.7733596 C20.9917,18.5723596 21.1117,18.3903596 21.2967,18.3123596 L27.3317,15.7723596 C27.4587,15.7203596 27.6027,15.7193596 27.7277,15.7763596 L33.6837,18.4013596 C33.8657,18.4813596 33.9827,18.6603596 33.9827,18.8583596 L33.9827,26.2333596 C33.9847,26.3583596 34.0097,29.4883596 31.9797,31.5503596 L31.9797,31.5503596 Z M10.9917,24.2363596 L18.9917,24.2363596 L18.9917,25.2363596 L10.9917,25.2363596 C8.1807,25.2363596 6.1807,23.2203596 6.0127,20.2203596 C6.0007,20.1093596 5.9997,19.9753596 5.9997,19.8413596 C5.9997,17.3323596 7.3177,15.6183596 9.8167,14.8623596 C9.7977,14.6353596 9.7847,14.3963596 9.7847,14.2153596 C9.7847,11.2993596 11.3617,8.77035958 13.8017,7.77035958 C17.0997,6.42235958 20.8437,6.87635958 22.9077,8.87435958 C23.6527,9.59835958 24.2317,10.4163596 24.6677,11.3593596 C25.2767,10.9093596 26.0677,10.6983596 27.0167,10.7453596 C28.7967,10.8353596 30.1657,12.4583596 30.4497,14.7523596 C31.9477,14.8763596 32.9347,15.6353596 33.4597,17.0603596 L32.5227,17.4063596 C32.0947,16.2493596 31.3147,15.7333596 29.9917,15.7333596 C29.7267,15.7333596 29.5077,15.5273596 29.4917,15.2633596 C29.3537,12.9253596 28.0857,11.8003596 26.9657,11.7443596 C26.0207,11.6913596 25.3207,11.9633596 24.8867,12.5353596 C24.7757,12.6803596 24.6017,12.7523596 24.4137,12.7283596 C24.2337,12.7003596 24.0817,12.5773596 24.0187,12.4053596 C23.6147,11.3023596 23.0237,10.3823596 22.2117,9.59135958 C20.4237,7.86135958 17.1217,7.49235958 14.1807,8.69635958 C12.1177,9.54135958 10.7847,11.7073596 10.7847,14.2153596 C10.7847,14.4883596 10.8197,14.9113596 10.8507,15.1743596 C10.8807,15.4253596 10.7197,15.6583596 10.4747,15.7183596 C8.1687,16.2903596 6.9997,17.6773596 6.9997,19.8413596 C6.9997,19.9423596 6.9987,20.0423596 7.0087,20.1433596 C7.1497,22.6383596 8.7117,24.2363596 10.9917,24.2363596 L10.9917,24.2363596 Z" id="Fill-1" fill="#FFFFFF"></path>
+      </g>
+    </svg>
+    <text x="584" y="226" class="label">VPC</text>
+    <text x="584" y="248" class="code">10.31.0.0/16</text>
+    <rect x="535" y="260" width="358" height="84" rx="8" fill="#fff" stroke="#b9a6df"/>
+    <text x="551" y="286" class="label">Application subnet</text>
+    <text x="551" y="309" class="code">10.31.0.0/24 · us-east-1a</text>
+    <text x="551" y="329" class="detail">Automatic public IPv4 disabled</text>
+  </g>
+  <g id="lifecycle">
+    <text x="32" y="434" class="section">Verified local lifecycle</text>
+    <rect x="32" y="450" width="200" height="102" rx="12" fill="#fff" stroke="#c4bfd2"/>
+    <text x="50" y="481" class="label">Create</text>
+    <text x="50" y="505" class="detail">2 resources added</text>
+    <path d="M238 501H260" class="arrow"/>
+    <rect x="268" y="450" width="200" height="102" rx="12" fill="#fff" stroke="#c4bfd2"/>
+    <text x="286" y="481" class="label">Inspect</text>
+    <text x="286" y="505" class="detail">Terraform state and</text>
+    <text x="286" y="525" class="detail">EC2 API agreed</text>
+    <path d="M474 501H496" class="arrow"/>
+    <rect x="504" y="450" width="200" height="102" rx="12" fill="#fff" stroke="#c4bfd2"/>
+    <text x="522" y="481" class="label">Destroy</text>
+    <text x="522" y="505" class="detail">2 resources deleted</text>
+    <path d="M710 501H732" class="arrow"/>
+    <rect x="740" y="450" width="208" height="102" rx="12" fill="#eaf6ee" stroke="#72a884"/>
+    <text x="758" y="481" class="label">Final state</text>
+    <text x="758" y="505" class="detail">Both resources removed</text>
+    <text x="758" y="525" class="detail">0 managed resources</text>
+  </g>
+</svg>
