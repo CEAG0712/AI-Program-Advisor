@@ -1,24 +1,97 @@
-# P3 AI Program Advisor
+# AI Program Advisor
 
-An independent, synthetic **AI Backend Engineering / Forward Deployed Engineering** portfolio simulation, aligned with the original Wandari **Intelligent Agent for E-commerce** assignment. The evidence covers a fictional academy catalog and controlled engineering tests.
+**An AI-powered course recommendation backend for online learning platforms.** It helps students select suitable programs from their academy's catalog based on budget, weekly study availability, and declared technical skills.
 
-## Status and target
+A student submits these constraints, and the service identifies eligible courses, ranks the matches, and returns their catalog-backed descriptions and prices. When explicitly enabled by the operator, an OpenAI-powered advisor can propose a validated catalog lookup and explain the recommendations. **Authentication, tenant access, suitability rules, and catalog facts remain under backend control.**
 
-The NestJS/TypeScript application uses a synthetic PostgreSQL course catalog. Demo bearer authentication establishes tenant identity on the server. `GET /health` reports process health, and authenticated `GET /catalog/offers` returns active offers for that tenant. Authenticated `POST /recommendations` filters by budget, available study time and exact declared prerequisites, then ranks eligible offers deterministically. PostgreSQL supplies fixture prices and prerequisites. See the [D1.2 catalog record](docs/verification/D1.2.md) and [D1.3 recommendation evidence](docs/verification/D1.3.md).
+**Built with:** TypeScript · NestJS · Node.js · PostgreSQL · OpenAI Responses API · optional Rust · Terraform · Docker · LocalStack
 
-The policy establishes synthetic course suitability using self-declared skills. Verified admission, production identity, database Row-Level Security (RLS), provider catalog ingestion, checkout, deployment and operational reliability work remain future scope. The Day 0 architecture targets Amazon Web Services (AWS), including Elastic Compute Cloud (EC2) and Relational Database Service (RDS), with Terraform and bounded LocalStack experiments. LocalStack Base compatibility remains unverified. [Architecture overview](docs/architecture/overview.md) · [Business invariants](AGENTS.md)
+## How it works
 
-### Day 4 infrastructure evidence
+Consider a learner who has a **$300 budget**, **6 hours per week**, and declares **basic Python** knowledge:
 
-The AWS Terraform foundation passed offline validation and one mocked topology test with ten assertions. A separate LocalStack Community 4.14.0 exercise created, inspected and removed the VPC and application subnet. Terraform ended with zero managed resources, and both exact IDs were absent from the emulator. Real AWS deployment remains unverified. [LocalStack diagram](docs/architecture/d4-localstack.svg) · [Verification and cleanup](docs/verification/D4-localstack.md)
+1. **Confirm the learner's constraints.** The client submits structured budget, hours, and known skills. The authenticated credential identifies the academy; the learner cannot choose another tenant through request fields.
+2. **Search that academy's active courses.** PostgreSQL supplies catalog prices, weekly workloads, and prerequisite requirements.
+3. **Determine which courses fit.** Deterministic backend rules exclude offers outside the budget or available study hours, with an unsupported currency, or with undeclared prerequisites.
+4. **Rank the suitable programs.** The default TypeScript path returns up to ten results in a consistent order. An empty recommendation list is a valid outcome.
+5. **Explain the results when the advisor is enabled.** The model's lookup proposal is validated against the confirmed constraints. The response uses authorized catalog facts; an invalid final explanation can fall back to deterministic rendering after a successful lookup.
 
-### Advisor implementation and evidence
+**Example:** With the included synthetic catalog fixture, the direct recommendation route returns `p3-a-102` followed by `p3-a-101` for the learner above. This is a local example, not a claim of live course inventory or verified admission eligibility. [Recommendation evidence](docs/verification/D1.3.md)
 
-The advisor validates `find_suitable_courses` proposals against confirmed constraints before dispatching a single tenant-scoped lookup. Bounded two-phase orchestration supports a local fake model and a real OpenAI Responses API adapter. The server renders recommendations from authorized database facts and can use deterministic fallback when a final model explanation fails validation or is unavailable after a successful read.
+## What it does
 
-Ordinary application startup leaves the advisor disabled. The OpenAI adapter and the explicit experimental latency profile are selected through server-owned composition. HTTP parameters confer no control over either setting. [Application composition](src/app.module.ts) · [Normal entrypoint](src/main.ts)
+- Exposes authenticated course-catalog and deterministic recommendation endpoints, plus an optional AI advisor endpoint.
+- Derives tenant identity on the server and uses tenant-scoped PostgreSQL reads.
+- Validates requests, eligibility constraints, model tool proposals, and customer-visible facts.
+- Distinguishes a successful no-match outcome from a database failure, and provides bounded timeouts and sanitized errors.
+- Keeps TypeScript ranking as the default, with an opt-in Rust integration whose output is checked against the TypeScript result.
 
-With advisor composition enabled, send a demo bearer credential and `Content-Type: application/json` to `POST /advisor/recommendations`. The route accepts exactly `confirmed: true` and a `constraints` object with all three fields below. Natural-language intake was deferred for this increment.
+## Architecture
+
+```mermaid
+flowchart TD
+    client[Student or client] -->|Bearer token + confirmed constraints| http[NestJS HTTP API]
+    http --> auth[DemoAuthGuard: server-derived tenant]
+    auth --> direct[Direct recommendations]
+    auth --> advisor[Optional AI advisor]
+    advisor -->|Bounded model phases| model[OpenAI Responses API or test fake]
+    model -->|Proposed find_suitable_courses| validate[Validate exact confirmed constraints]
+    validate --> service[Recommendations service]
+    direct --> service
+    service -->|Tenant-scoped parameterized SQL| db[(PostgreSQL catalog)]
+    db --> policy[Budget, hours, currency, prerequisites]
+    policy --> ts[TypeScript ranker - default]
+    policy -.-> rust[Optional Rust ranker: bounded subprocess + parity check]
+    ts --> facts[Authorized catalog facts]
+    rust --> facts
+    facts --> directOut[Direct response]
+    facts --> ground[Grounded explanation or safe fallback]
+    ground --> advisorOut[Advisor response]
+```
+
+The diagram describes application composition; it is **not** an AWS deployment diagram. The ordinary `src/main.ts` entrypoint enables the direct API, with the advisor disabled unless explicitly composed on the server. The optional Rust executable does not own tenant selection or suitability decisions. [Application composition](src/app.module.ts) · [Request trust boundaries](docs/architecture/b3b-tenant-trust-boundaries.md)
+
+## Engineering highlights
+
+| Engineering problem | Implemented decision | Evidence |
+| --- | --- | --- |
+| A caller tries to read another academy's courses | The credential determines a server-owned tenant context; catalog SQL binds `tenant_id` and filters active records | [Tenant isolation and PostgreSQL acceptance](docs/verification/D1.3.md) |
+| A model proposes another tenant, altered constraints, or an invented price | Tool proposals must match confirmed constraints; final responses are constructed from catalog facts, not invented model values | [Advisor verification](docs/architecture/b3-gate-implementation-status.md) · [Day 5 closeout](docs/verification/D5-closeout.md) |
+| A learner lacks prerequisites or exceeds budget | Backend filters by exact declared skills, USD budget, and weekly hours before ranking | [Suitability policy](src/recommendations/recommendations.policy.ts) · [Tests](tests/recommendations.unit.test.ts) |
+| A catalog query fails | Return a sanitized unavailable response; distinguish failed reads from successful zero-match results | [Failure tests and incident defense](docs/verification/D5-closeout.md) |
+| An external ranker adds failure and latency risk | Keep TypeScript as default; make Rust opt-in, deadline-bound, concurrency-limited, and subject to exact output parity checks | [Rust adapter](src/recommendations/rust-ranker.ts) · [Verification](docs/verification/D3-rust-ranking.md) |
+| Infrastructure declarations need verification without cloud spend | Validate Terraform topology offline and exercise a VPC/subnet create-inspect-destroy lifecycle in LocalStack | [LocalStack lifecycle](docs/verification/D4-localstack.md) · [Architecture diagram](docs/architecture/d4-localstack.svg) |
+
+## Verified results
+
+| Verification | Result | Scope |
+| --- | --- | --- |
+| Day 5 TypeScript checks | Typecheck and compilation passed | Local verification |
+| Day 5 final offline suites | **289 passed, 0 failed, 2 skipped** | 273 main-suite passes plus 16 supplemental passes; two release-Rust cases intentionally skipped |
+| Day 3 Rust tests | **20 passed** | Retained standalone Rust unit/protocol results |
+| Day 3 adapter benchmark, 7 candidates | TypeScript **0.005 ms** vs full Rust adapter **2.881 ms** median | 25 paired local samples; includes subprocess startup and parity checks |
+| Day 3 adapter benchmark, 1,000 candidates | TypeScript **0.024 ms** vs full Rust adapter **4.645 ms** median | Same local methodology; TypeScript retained as default |
+| Day 4 Terraform topology | **10 assertions passed** | Mocked offline Terraform test |
+| Day 4 LocalStack lifecycle | **1 VPC and 1 subnet created, inspected, destroyed** | LocalStack Community 4.14.0; empty Terraform state and missing IDs after cleanup |
+
+These figures are from distinct recorded checks, not a production load test or service-level objective. Day 5's first offline attempt encountered a test-fixture path error; the corrected rerun passed without application changes. [Full Day 5 evidence](docs/verification/D5-closeout.md) · [Rust benchmark details](docs/verification/D3-rust-ranking.md#benchmark)
+
+## API
+
+| Endpoint | Purpose | Behavior |
+| --- | --- | --- |
+| `GET /health` | Process-health check | Public; does not prove PostgreSQL readiness |
+| `GET /catalog/offers` | List active offers for the authenticated academy | `200` with scoped rows; `401` without valid authentication; `503` on dependency failure |
+| `POST /recommendations` | Deterministic course recommendations | `200` with ranked results or an empty list; invalid `400`; unauthorized `401`; unavailable `503` |
+| `POST /advisor/recommendations` | Optional grounded AI advisor | Requires server-enabled advisor and confirmed constraints; provides controlled rejection, timeout and unavailable responses |
+
+Direct recommendation request:
+
+```json
+{"budget_cents":30000,"weekly_hours":6,"known_skills":["basic-python"]}
+```
+
+Advisor request (when enabled in server composition):
 
 ```json
 {
@@ -31,142 +104,36 @@ With advisor composition enabled, send a demo bearer credential and `Content-Typ
 }
 ```
 
-| Earlier Day 2 verification | Observed result |
-| --- | --- |
-| Gate 2 offline unit and mocked integration tests | **238 passed, zero failed, zero skipped.** |
-| B3B-2B real PostgreSQL with a fake model | In-process HTTP verified both tenant scopes and preserved all six fixture rows. |
-| B3C-2B initial OpenAI attempt | The 2-second initial deadline expired, returning HTTP 504 with zero business SQL dispatches. |
-| B3C-2G experimental OpenAI and PostgreSQL acceptance | One synthetic request completed with grounded recommendations under the explicit 30-second overall profile. The default overall deadline remains 6 seconds. |
+Both protected routes require `Authorization: Bearer <demo credential>` and `Content-Type: application/json`. Inputs express a learner's declared constraints; they do not verify admission eligibility or authorize a purchase. [Route contracts](docs/verification/D1.3.md) · [Advisor composition](src/app.module.ts)
 
-The controlled live success establishes neither an operational latency service-level objective (SLO) nor a production deployment.
+## Running and testing locally
 
-- [HTTP-to-PostgreSQL sequence](docs/architecture/b3b-http-postgresql-sequence.md)
-- [Tenant trust boundaries](docs/architecture/b3b-tenant-trust-boundaries.md)
-- [B3 implementation and verification status](docs/architecture/b3-gate-implementation-status.md)
-
-### Day 3 Rust ranking
-
-**D3-R1** implements a standalone Rust executable with a versioned JSON protocol over standard input and output. It validates up to 1,000 candidates and returns up to ten offer identifiers (IDs), ordered by weekly study hours descending, then price in cents ascending, then ID in JavaScript-compatible UTF-16 code-unit order. It caps input at 1 MiB and output at 10 KiB and emits sanitized failure diagnostics. [Rust ranker](rust/ranker/src/main.rs)
-
-**D3-R2** adds an optional server-owned `rustRankerPath` composition setting. Normal startup still uses TypeScript ranking. TypeScript reads the authenticated tenant's catalog and applies the existing suitability rules. Rust receives only the eligible offer IDs, prices, and weekly study hours. The adapter verifies exact parity with the TypeScript ranking, and the recommendation service reconstructs the response from authorized catalog records. Each application allows two active ranking children and refuses additional work immediately, with zero retries. Each child has a configured 500 ms deadline, a 1 MiB input cap, a 10 KiB standard-output cap, a 4 KiB standard-error cap, and cancellation and shutdown cleanup. Ranking failures return sanitized unavailable outcomes. [Server composition](src/app.module.ts) · [Rust adapter](src/recommendations/rust-ranker.ts) · [Recommendation service](src/recommendations/recommendations.service.ts)
-
-**Unicode correction** aligns advisor ID validation with the PostgreSQL and Rust limit of 80 Unicode code points. The advisor rejects empty IDs, malformed Unicode, embedded null characters, overlength IDs, and duplicates. With the real Rust executable and fake PostgreSQL and model dependencies, both recommendation routes returned the same authorized offer, including an ID of 80 supplementary-plane code points. [Advisor validation](src/ai/advisor.service.ts) · [Composed test](tests/advisor.executor.unit.test.ts)
-
-**Retained Day 3 verification** recorded 279 offline Node.js tests passed with zero failures or skips, 20 Rust tests passed with zero failures, successful TypeScript typecheck and build, and a successful Rust release build and format check. The optional Clippy command could not run because the component was unavailable. Day 3 left real PostgreSQL and provider integration, clean-machine portability, and production behavior unverified. [Day 3 verification record](docs/verification/D3-rust-ranking.md)
-
-| Candidates | TypeScript median | Full Rust adapter median |
-| ---: | ---: | ---: |
-| 7 | 0.005 ms | 2.881 ms |
-| 1,000 | 0.024 ms | 4.645 ms |
-
-The local test used 25 paired measurements per fixture. The adapter measurement includes process launch, serialization, the TypeScript reference sort, response parsing, and parity checks. TypeScript was faster in both tested workloads and remains the default. The measurements do not establish a production service-level objective. [Benchmark methodology](docs/verification/D3-rust-ranking.md#benchmark)
-
-## Development and verification
-
-Use Node.js 24.x, npm 11.x and Git. npm is the package manager. Exact NestJS, PostgreSQL driver, TypeScript and typing versions are locked.
-
-### Proposed Day 3 reproduction
-
-Use a Rust toolchain that supports edition 2024, a native linker, and `rustfmt` alongside Node.js 24 and npm 11. On a supported shell, the following recipe uses locked packages and a locally built release executable. Initial dependency retrieval requires authorized network access or populated caches. With the Cargo dependencies cached, add `--offline` to the Cargo build and test commands. The Node.js suite uses fake dependencies and requires no database, model service, or credentials. This recipe was derived from the retained runs and has not been verified on a clean machine. The ordinary `npm run test:unit` script runs the catalog unit file only.
-
-```sh
-npm ci --ignore-scripts --no-audit --no-fund
-export CARGO_TARGET_DIR="$PWD/rust/ranker/target"
-cargo build --manifest-path rust/ranker/Cargo.toml --locked --release
-cargo fmt --manifest-path rust/ranker/Cargo.toml --check
-cargo test --manifest-path rust/ranker/Cargo.toml --locked
-npm run typecheck
-node node_modules/typescript/bin/tsc --noEmit false --outDir dist/b3c2-day3 --incremental false
-P3_D3_R2_RANKER="$CARGO_TARGET_DIR/release/p3-ranker" \
-  P3_B3C2_TEST_BUILD=dist/b3c2-day3 \
-  node --test --test-concurrency=1 dist/b3c2-day3/tests/*.unit.test.js tests/b3c2-runner.offline.test.mjs
-```
-
-### TypeScript development
-
-Ordinary development workflow, with dependency installation authorized:
+Use Node.js 24.x and npm 11.x. The repository includes placeholder configuration in [.env.example](.env.example) and [config/d1.2.env.example](config/d1.2.env.example). Local PostgreSQL setup uses [compose.yaml](compose.yaml); inspect the documented fixture safeguards before starting it. Installation, database startup and integration execution require the operator's authorization and a verified local environment.
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
 npm run typecheck
-npm run check:env
-npm run verify
-```
-
-`verify` combines type checking and environment inspection. Normal npm workflows may create local cache/log artifacts and perform update-notifier checks; they are not guaranteed to be strictly read-only.
-
-For stricter local inspection with dependencies already installed, bypass npm wrappers and disable Node compile caching:
-
-```sh
-NODE_DISABLE_COMPILE_CACHE=1 node node_modules/typescript/bin/tsc --noEmit --incremental false
-NODE_DISABLE_COMPILE_CACHE=1 node scripts/check-env.mjs
-```
-
-The checker also forces `NODE_DISABLE_COMPILE_CACHE=1` for child processes, including npm version inspection. It does not load `.env`, print credential values, install software or start services. It queries Docker only when the selected endpoint is a local Unix socket. These controls limit known side effects; they do not guarantee that every external tool or operating-system behavior is side-effect-free.
-
-Missing future tools do not fail D1.1. The checker inspects the repository containing this script; it does not require a commit or clean working tree. Failed Docker queries report sanitized `ACCESS_DENIED`, `CONNECTION_UNAVAILABLE`, `TIMEOUT` or `UNKNOWN_FAILURE` categories without inferring whether the daemon is stopped. Successful queries report `AVAILABLE`.
-
-`.env.example` documents placeholder configuration. The D1.1 harness requires no AWS or OpenAI credentials. The local catalog and advisor use server-derived demo tenant identity.
-
-Initial D1.1 verification reported Docker unavailable. Subsequent acceptance review distinguished sandbox access denial from daemon state and observed server version 28.5.1 through an approved read-only query. PostgreSQL readiness and tool availability were unresolved at that checkpoint. See the [D1.1 evidence](docs/verification/D1.1.md) for historical observations and the D1.2 section below for later database verification.
-
-## D1.2 local setup and verification
-
-D1.2 subsequently verified PostgreSQL 17.12 and real HTTP catalog reads; the preceding paragraph preserves the D1.1 observation. This is a local portfolio simulation with fictional inventory and prices, not provider catalog data or a deployed service. Demo credentials are not production identity management. Prerequisites are metadata, not an eligibility decision. The future provider adapter remains an architectural boundary.
-
-The [D1.2 configuration template](config/d1.2.env.example) documents the required variables and contains placeholders. The demo expects two distinct URL-safe bearer credentials of 32–256 characters. The test requires the dedicated `p3_d12` database and role at `127.0.0.1:55432`.
-
-Check for existing P3 container/volume and port conflicts before startup. Only operate against a verified local Docker context. The Compose file pins the observed PostgreSQL image digest, binds `127.0.0.1:55432`, and uses container `p3-d12-postgres` and persistent volume `p3-d12-data`. Do not adopt or overwrite unknown data. With local operations authorized:
-
-```sh
-npm ci --ignore-scripts --no-audit --no-fund
-docker compose up -d --wait --wait-timeout 60
-npm run test:unit
-D1_2_INTEGRATION=1 npm run test:integration
-npm run verify
 npm run build
-npm start
-```
-
-The integration command initializes only the dedicated catalog using `db/schema.sql` and `db/seed.sql`. It rejects unexpected offer IDs, checks fixed fixture ownership/prices/activity, tests repeatable seeding and temporarily deactivates/restores Academy B fixtures to verify a real empty catalog. Run it serially on this disposable local fixture database, never alongside an active demo. It starts and closes temporary localhost HTTP applications, including a connection-failure test against an unused local port; it does not stop PostgreSQL. It fails rather than substituting mocks when real PostgreSQL is unavailable.
-
-`npm start` binds the demo API to `127.0.0.1`, using `PORT` (default 3000). `/health` is public process health and does not establish database readiness. Send `Authorization: Bearer <private demo credential>` to `/catalog/offers`; tenant query/header values cannot change scope. Successful responses are arrays of database fields (`offer_id`, `title`, `price_cents`, `currency`, `required_skills`, `weekly_study_hours`), ordered by offer ID. Empty scope is HTTP 200 with `[]`; invalid authentication is 401; database request failure is a sanitized 503. Catalog responses carry `Cache-Control: no-store`. `POST /recommendations` is described below.
-
-Ctrl-C stops the foreground API. `docker compose stop postgres` stops this project's database and retains its persistent volume. Host-context permission may be required where the sandbox blocks Docker or localhost networking.
-
-## Review and future publication
-
-The Day 3 implementation, Unicode correction, and documentation completed independent review. Publication is a separately authorized operation. Review the complete approved file set and publication audit before staging. After authorized publication, independently verify the remote commit and file set and record the evidence. [Day 3 publication status](docs/verification/D3-rust-ranking.md#security-and-publication)
-
-For session recovery, follow AGENTS.md, inspect Git and the verification record, and obtain the next increment's authorization. Day 1 has a 240-minute ceiling; the original 45-minute harness allocation includes D1.0. Total implementation is limited to 20 hours with a provisional $15 spending ceiling. Record measured work, not inferred time.
-
-**TRAINING WHEELS ON:** guided implementation and Codex explanations. **TRAINING WHEELS OFF:** the engineer independently reviews source, chooses verification, manages risk and owns the change. Generated output does not establish mastery.
-
-## D1.3 recommendations and verification
-
-Send `Content-Type: application/json` (optionally `; charset=utf-8`) and the existing private demo bearer credential to `POST /recommendations`:
-
-```json
-{"budget_cents":30000,"weekly_hours":6,"known_skills":["basic-python"]}
-```
-
-All three keys are required; unknown keys, including tenant or policy authority, are rejected. Budget is an uncoerced safe integer from 0 to 100000000 USD cents. Weekly hours is an integer from 1 to 168. Skills are 0–32 unique lowercase letter/digit identifiers separated by single hyphens, at most 64 characters each; whitespace/case variants are rejected. An empty skills list declares no skills. Missing skills is invalid. The JSON parser's existing 100 KiB body limit is retained; malformed, oversized or unsupported bodies produce a fixed 400 response on this route.
-
-The verified credential selects the tenant. Caller query/header tenant values confer no authority; body authority fields fail validation. The shared repository selects active offers for that tenant with bound SQL parameters. At most 1000 active candidates are supported; fetching a 1001st sentinel row causes a sanitized 503 refusal rather than ranking an incomplete page. Non-USD offers are excluded because the request budget is USD. Every prerequisite must match an explicitly declared skill exactly.
-
-Eligible offers rank by weekly hours descending, price cents ascending, then offer ID in ascending JavaScript code-unit order. This is a transparent capacity-use preference, not learned suitability. At most ten recommendations are returned with stored fields and three fixed policy reasons. Maria receives `p3-a-102` then `p3-a-101`. Results do not verify competence, admission, enrollment, reservation, availability or checkout permission. PostgreSQL facts are current at query time; no future price guarantee is made. The provider catalog integration remains a future boundary.
-
-Success is 200 with `{"recommendations":[...]}`; a valid no-match is 200 with `{"recommendations":[]}`. Invalid input is sanitized 400, invalid credentials 401, and database failure or candidate overflow 503. Recommendation responses carry `Cache-Control: no-store`, including tested errors. Raw learner bodies and credentials are not logged by the new code. A malformed body may fail in parsing before authentication runs.
-
-With dependencies already installed and the approved private environment supplied, use:
-
-```sh
-npm run verify
 npm run test:unit
 npm run test:recommendations:unit
-D1_2_INTEGRATION=1 npm run test:integration
-D1_3_INTEGRATION=1 npm run test:recommendations:integration
-npm run build
 ```
 
-Run integration suites only with local verification authorized, serially against the dedicated database at `127.0.0.1:55432` with no active demo. D1.2 tests initialize and check fixtures and temporarily change activity. D1.3 tests are read-only and refuse any deviation from all six expected fixture rows. Both close their owned applications and pools. Preserve the database and fixtures when diagnosing verification failures.
+The individual npm unit scripts are **not** the comprehensive 289-pass Day 5 command. For the complete documented offline suite, environment isolation and recorded outcomes, follow [D5-closeout.md](docs/verification/D5-closeout.md). For real local PostgreSQL setup and controlled integration runs, see [D1.2](docs/verification/D1.2.md) and [D1.3](docs/verification/D1.3.md). The optional Rust build and executable verification are recorded in [Day 3](docs/verification/D3-rust-ranking.md).
+
+## Design decisions
+
+- **Backend rules outrank model output.** The AI can propose a lookup or explanation, but cannot change tenant authority, offer facts, budget rules, prerequisites, or checkout permissions.
+- **Deterministic recommendations first.** Default ranking sorts suitable offers by weekly study hours descending, price ascending, then offer identifier. The ordering is explicit and testable, not a learned prediction of student success.
+- **TypeScript instead of Rust by default.** The measured full Rust adapter was slower at the tested sizes. Rust remains an optional, bounded integration rather than an unjustified default.
+- **No-match is different from unavailable.** A successful empty query can return an empty result; a failed database lookup cannot masquerade as one.
+- **Bounded work and safe failure.** Candidate reads use a 1,001-row sentinel to reject catalogs exceeding 1,000 active candidates. Model phases, output sizes, and optional Rust subprocesses have explicit limits; cancellation is cooperative and does not guarantee an already-running database query stops.
+
+## Project scope and evidence
+
+This repository is an **independent engineering portfolio implementation** using a synthetic academy catalog and controlled tests. Verified behavior covers local application logic, selected real local PostgreSQL and OpenAI acceptance paths, an optional Rust executable, and a two-resource LocalStack exercise. It does **not** claim a customer deployment, actual enrollment or sales outcomes, production identity, database Row-Level Security (RLS), live provider ingestion, checkout, or real AWS infrastructure operation.
+
+- [Architecture overview](docs/architecture/overview.md) and [business invariants](AGENTS.md)
+- [End-to-end reliability closeout](docs/verification/D5-closeout.md)
+- [Advisor implementation and verification](docs/architecture/b3-gate-implementation-status.md)
+- [Rust implementation and benchmark](docs/verification/D3-rust-ranking.md)
+- [Terraform foundation and LocalStack cleanup](docs/verification/D4-localstack.md)
